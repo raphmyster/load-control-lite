@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Load Control Lite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
+<script>try { const t = JSON.parse(localStorage.getItem('lcl.theme')); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand" id="brand"><span class="divider" aria-hidden="true"></span><span class="app">Load Control Lite</span></span>
+  <span class="poc">Demo, not for operational use</span>
+  <span class="spacer"></span>
+  <select id="flightPick" aria-label="Saved flights"></select>
+  <button class="btn small" data-act="newFlight">New</button>
+  <button class="btn small" data-act="dupFlight">Duplicate</button>
+  <button class="btn small danger" data-act="delFlight">Delete</button>
+  <button class="btn small" data-act="theme" id="themeBtn" aria-label="Colour theme"></button>
+  <button class="btn small" data-act="pdf">Save as PDF</button>
+  <button class="btn small primary" data-act="print">Print</button>
+</header>
+<main id="view"></main>
+<div id="print-root"></div>
+<dialog id="limitDialog" aria-labelledby="limitTitle">
+  <h2 id="limitTitle">Max limit reached</h2>
+  <p>This load is over a limit on the form. Fix it before printing:</p>
+  <ul id="limitList"></ul>
+  <div class="toolbar"><button class="btn primary" data-act="limitClose">Fix it</button></div>
+</dialog>
+<dialog id="pdfDialog">
+  <h2>Save as PDF</h2>
+  <p>The print window opens next. Set <b>Destination</b> (or <b>Printer</b>) to <b>Save as PDF</b>, then press Save.</p>
+  <p class="hint">On a Mac you can also use the PDF button at the bottom-left of the print window.</p>
+  <div class="toolbar"><button class="btn primary" data-act="pdfGo">Open print window</button><button class="btn" data-act="pdfCancel">Cancel</button></div>
+</dialog>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
