@@ -30,7 +30,7 @@
 - The OpenRouter key exists only as an edge function secret. Never in the repo, the browser, a log line, or this chat.
 - Every `supabase` command Claude runs ends in `</dev/null` (the CLI crashes on interactive output in this terminal).
 - The report reads data; it never changes weights, placement, limits or the print block.
-- No Porter branding: `scripts/check-debrand.sh ../debrand-terms.txt` must still pass.
+- No original-operator branding: `scripts/check-debrand.sh ../debrand-terms.txt` must still pass.
 
 ---
 

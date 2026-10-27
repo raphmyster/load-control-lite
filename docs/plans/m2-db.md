@@ -18,7 +18,7 @@
 - **Claude:** everything else. It pushes the migration (the CLI crashes in the user's terminal), and it commits only when the user says so.
 
 **Constraints:**
-- No Porter branding. AI never touches weights, placement, limits or printing.
+- No original-operator branding. AI never touches weights, placement, limits or printing.
 - The publishable (anon) key is public by design and goes in the repo; the `service_role` key never appears in browser code or the repo.
 - Theme, print choices and the last-open flight id stay in localStorage as per-viewer conveniences. Flights no longer do.
 - The preview serves a copy synced from the repo, because macOS blocks the Python server from reading Documents.
@@ -703,11 +703,11 @@ Remove `sampleFlight()` (no longer used; M3 seeds data). Keep `newFlight()`.
 ### Task 8: Preview setup
 
 **Files:**
-- Modify: `/Users/raph/Documents/Resume/Porter Airlines/.claude/launch.json` (outside the repo)
+- Modify: `../.claude/launch.json` (outside the repo)
 
 - [ ] **Step 1: Point the preview at this session's scratchpad.** Set the `cd` path in `runtimeArgs` to `<scratchpad>/site` (the session's scratchpad directory), keeping port 8411.
 
-- [ ] **Step 2: Sync** — Run: `rsync -a --delete --exclude .git --exclude node_modules "/Users/raph/Documents/Resume/Porter Airlines/load-control-lite/" "<scratchpad>/site/"`. Re-run after every code change.
+- [ ] **Step 2: Sync** — Run: `rsync -a --delete --exclude .git --exclude node_modules ./ "<scratchpad>/site/"` from the repo root. Re-run after every code change.
 
 - [ ] **Step 3: Start** with `preview_start {name: "load-control-lite"}`. Expected: the sign-in card, no console errors (`read_console_messages`). If supabase-js fails to load from jsDelivr, stop and report.
 
