@@ -19,7 +19,7 @@
 - No `_github-pages-challenge-raphmyster` TXT record exists, so the domain isn't verified on the GitHub account yet.
 - `scripts/check-debrand.sh ../debrand-terms.txt` passes, but its term list doesn't include the airline's bare name, and three tracked plan files still use it: "No [airline] branding" once each in m2, m4 and m5, and the parent folder's name inside an absolute path twice in m2. The same lines are in git history (5 hits). Task 1 has the user decide on this before anything is public. This plan avoids the name so it doesn't add to the count.
 - History is 10 commits on one branch, with no deleted files and no `sk-or-` or JWT strings. The cron secret is generated inside the database and never written as a literal.
-- Every commit's author email is `your personal Gmail address`. It becomes public with the repo.
+- Every commit's author email is the personal Gmail address. It becomes public with the repo.
 - Sign-in is email and password (`signInWithPassword` in `js/db.js`). No magic link or OAuth flow redirects back to the site, so Auth's URL settings only matter for emails Supabase might send, such as a password reset.
 
 **Decided while planning (reviewed by a subagent):**
@@ -110,7 +110,7 @@ Expected: `raphmyster.github.io.`; then `raphmyster.github.io.` again followed b
 
 - [ ] **Step 1: User creates the repo** at github.com/new: owner `raphmyster`, name `load-control-lite`, Public, with **no** README, .gitignore or license, so the first push doesn't conflict.
 
-- [ ] **Step 2: User decides on the commit email.** All commits carry `your personal Gmail address`, which becomes public. If GitHub → Settings → Emails has "Block command line pushes that expose my email" on, the push fails with GH007. The user either accepts the exposure (and turns that setting off if it's on), or wants privacy. Privacy means rewriting the author email to the account's `@users.noreply.github.com` address with `git filter-repo --mailmap` and setting `git config user.email` to it for future commits. That rewrite changes every hash, like option (b) in Task 1.
+- [ ] **Step 2: User decides on the commit email.** All commits carry the personal Gmail address, which becomes public. If GitHub → Settings → Emails has "Block command line pushes that expose my email" on, the push fails with GH007. The user either accepts the exposure (and turns that setting off if it's on), or wants privacy. Privacy means rewriting the author email to the account's `@users.noreply.github.com` address with `git filter-repo --mailmap` and setting `git config user.email` to it for future commits. That rewrite changes every hash, like option (b) in Task 1.
 
 - [ ] **Step 3: User checks security settings.** Repo → Settings → Advanced Security (or "Code security"): **Secret Protection** on, **Push protection** on. Public repos usually have both on by default. The user confirms what they see.
 
@@ -233,3 +233,20 @@ Expected: Pages redeploys. The site is unchanged, since only a doc changed.
 ## Plan review
 
 A subagent reviewed the first draft on 2026-10-27 and found two blocking problems, both fixed above. `gitleaks dir .` would have opened the git-ignored key file, so the scan is now history-only. The draft also used the airline's name five times, so committing it would have undone Task 1's cleanup; the plan now avoids the name. Other changes from the review: the final scan moved to just before the push, domain verification now comes before the DNS record (GitHub's guidance against subdomain takeover), the commit email exposure got a step, the Done-when items each got a check, and the OpenRouter credit limit gets confirmed before going public. The reviewer confirmed the CORS fallback, the Cloudflare wildcard behaviour, the `verify_jwt = false` expectation, and the CLI usages.
+
+---
+
+## Added during execution (2026-10-27)
+
+- **Task 1.** The user confirmed the friend's consent and chose option (a). Five lines in m2, m4 and m5 were reworded, and the airline's bare name went into `../debrand-terms.txt`. The first check after that failed on this plan, not on the name: an older term in the list matched an ordinary English word used here four times. Rewording those lines made it pass. gitleaks 8.30.1 was installed with Homebrew.
+- **Task 3.** The TXT challenge and the DNS-only CNAME both resolved on the first check, from the local resolver, 1.1.1.1 and the Cloudflare nameserver. The wildcard's `172.64.80.1` answer was gone.
+- **Task 4, repo.** `gh` was installed, but its device sign-in never finished, so the user created the empty public repo on github.com instead. The remote and the push went over SSH as planned. `gh` stays installed and signed out.
+- **Task 4, email.** The user chose privacy. A bundle of the old history was saved to the session scratchpad first. `git filter-repo --mailmap` moved all 11 commits to `37380347+raphmyster@users.noreply.github.com`, and the repo's local `user.email` is set to it. This plan had quoted the personal address twice, so a second pass with `--replace-text` removed it from file contents in history too. Every hash changed; no tracked file referred to the old ones. The hashes in the M5 handoff no longer match.
+- **Task 4, final scan.** gitleaks found one match in 11 commits, the publishable key in `js/supabase-config.js` (rule `generic-api-key`), as expected. Push protection let the push through.
+- **Task 5.** The first Pages build took about a minute. The Let's Encrypt certificate for `loadcontrol.raphaelattar.com` was already issued when the site first answered, with no wait. Enforce HTTPS was turned on, but a few minutes later plain HTTP still answered 200 with no redirect; see the open item below.
+- **Task 6.** `ALLOWED_ORIGINS` was unset before (the preview default applied). After setting it, the live origin and `evil.example` both got `access-control-allow-origin: https://loadcontrol.raphaelattar.com`, and an unsigned POST got `{"error":"Sign in first."}`. `secrets list` prints SHA-256 digests in its `value` field, not the secrets.
+- **Task 7.** The user confirmed sign-ups are off. The Site URL was left alone, since password sign-in doesn't use it.
+- **Task 8, the daily cap.** The browser pane had no session at first: the user had signed in in another browser. After signing in in the pane, the flights page and report history loaded with no console errors. The first Generate got the 429 daily-cap reply, which still showed the live origin reaching the function with a valid token: the page could read the reply. The demo user had 9 runs that day (Toronto time, failed runs included), so a temporary cap of 6 also got a 429. The user then approved 10. One run went through and `REPORT_DAILY_CAP` was unset again, back to the default of 5.
+- **Task 8, the live run.** Claude-only, Haiku (`anthropic/claude-haiku-5.5`), week of 2026-10-19: status `ok`, $0.00245, 16.7 s total (15.4 s for the Claude call), one `ai_calls` row, 3,846 characters of report. The browser's network log didn't capture the POST, so the CORS evidence is the console (no CORS error) and the report appearing on the page.
+- **Monitoring the run.** A report row is inserted as `error` and updated when the report is stored, so a poll for "any final status" stops early on the placeholder. M8's RUNBOOK should say to wait for `content_md` or the `ai_calls` row instead.
+- **Open after M7:** the HTTP→HTTPS redirect (recheck; if still missing, untick and re-tick Enforce HTTPS), and removing the preview origins from `ALLOWED_ORIGINS` after the interview.
