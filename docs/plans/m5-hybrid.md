@@ -1258,6 +1258,30 @@ supabase db query --linked -f supabase/tests/schedule_check.sql </dev/null
   - Claude broke the "don't quote the labels" rule once on 10-19, with a data-quality bullet citing "data_quality or low-confidence labels". It's minor, and an item for M6's evals.
 - Final checks: `npm test` passes 90 of 90. `labels_check`, `ai_usage_check`, `rls_check`, `schedule_check` and `save_flight_check` pass, and so does the de-brand check. The advisors show only the accepted leaked-password warning. Total logged spend is now $0.0244.
 
+## Opus comparison (run after M5, input for M6)
+
+On 2026-10-27, after the M5 commit, the user asked for one Opus 5.5 run per mode on the week of 2026-10-19, to compare with the Haiku runs of the same week. `CLAUDE_MODEL=anthropic/claude-opus-5.5`, `CLAUDE_TIMEOUT_MS=100000` and `REPORT_DAILY_CAP=9` were set for the two runs and then unset. The logged costs match $4 in / $20 out per million tokens.
+
+| Run | Cost | Time | Claude tokens in / out | Words | All 5 patterns in report | All 5 in Summary |
+|---|---|---|---|---|---|---|
+| Haiku, Claude only | $0.0023 | 15.0 s | 5,995 / 3,362 | 751 | yes | no (YAM growth, 118 freight missing) |
+| Haiku, hybrid | $0.0040 | 20.2 s | 5,448 / 3,031 | 644 | yes | no (YAM growth missing) |
+| Opus, Claude only | $0.0738 | 24.0 s | 5,995 / 2,489 | 704 | yes | yes |
+| Opus, hybrid | $0.0817 | 27.3 s | 5,520 / 2,885 | 860 | yes | yes |
+
+Claims checked against `flights`:
+- Haiku, Claude only, misattributed a cause: "ATC flow control (214 and 118 on 2026-10-23)". 118 that day was late forwarder cargo, which both Opus reports give correctly.
+- Haiku, hybrid, quoted the classifier's labels against the rule. Opus, hybrid, didn't.
+- Only Opus connected rows. It noticed that C-GNBC, the aircraft with the loose net anchor on 512 on 10-22, flew 512 again on 10-24 and 10-25 with no repair recorded (true; the 10-25 note says only "nets checked"). It also suggested checking the same fitting on the other B1900D aircraft. Opus, hybrid, also found a real pattern nobody planted: "crew late from the hotel" on 3 legs of 214 over the 8 weeks.
+- All four flagged "crew" in `dg_note` as unclear, so that isn't a model difference.
+- The 700-word limit was broken by three of the four (Opus, hybrid, by the most, at 860).
+
+What this says:
+- Recall on the planted patterns doesn't separate the models; all four found everything. The differences are in accuracy (one wrong cause from Haiku), rule-following, what makes the Summary, and reasoning across rows, where Opus is better.
+- Opus costs 20–32× Haiku per report: about $0.08 against $0.002–0.004, or roughly $4 a year against $0.20 for one weekly report. At this volume both are negligible. Rank the models on the quality differences, not price.
+- Hybrid doesn't save input tokens on either model at 63 flights: 475 fewer with Opus, 547 with Haiku. The SQL facts make up most of the prompt, so trimming the flight CSV barely matters. Hybrid's case rests on volume, not on this report.
+- For M6: score accuracy of causes and figures, rule breaks, Summary coverage and word count, not just recall. One run per model is an anecdote; M6 needs at least 3.
+
 ## Done when
 
 - `npm test` passes, including the new Jev, hybrid and report-core tests.
