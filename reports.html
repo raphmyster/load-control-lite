@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reports · Load Control Lite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap" rel="stylesheet">
+<script>try { const t = JSON.parse(localStorage.getItem('lcl.theme')); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand" id="brand"><span class="divider" aria-hidden="true"></span><span class="app">Load Control Lite</span></span>
+  <span class="poc">Demo, not for operational use</span>
+  <span class="spacer"></span>
+  <a class="btn small" href="index.html">Flights</a>
+</header>
+<main id="view" class="reports">
+  <section class="card" id="signedOut" hidden>
+    <h2>Sign in first</h2>
+    <p><a href="index.html">Sign in on the flights page</a>, then come back to Reports.</p>
+  </section>
+  <section class="card" id="generator" hidden>
+    <h2>Weekly ops report</h2>
+    <form id="genForm" class="report-form">
+      <label class="f">Week<select id="weekPick" required></select></label>
+      <p class="hint">Mode: Claude only. Claude reads the week's flights and notes and writes the report; every figure comes from the database.</p>
+      <div class="toolbar"><button class="btn primary" type="submit" id="genBtn">Generate</button></div>
+      <p class="report-status" id="genStatus" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <section class="card" id="reportCard" hidden></section>
+  <section class="card" id="historyCard" hidden>
+    <h2>History</h2>
+    <div class="table-wrap"><table class="history"><thead><tr>
+      <th>Created</th><th>Week</th><th>Status</th><th>Cost</th><th>Time</th><th>Model</th><th></th>
+    </tr></thead><tbody id="historyBody"></tbody></table></div>
+  </section>
+</main>
+<script type="module" src="js/reports.js"></script>
+</body>
+</html>
