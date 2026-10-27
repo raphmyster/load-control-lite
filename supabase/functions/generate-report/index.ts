@@ -1,9 +1,11 @@
 /* generate-report: writes the weekly ops report with Claude (Mode A, claude_only).
    Wiring only; the logic is in report-core.js, openrouter.js and pipeline.js.
-   Reads go through the caller's own client, so RLS applies. Writes to reports and
-   ai_calls use the service role, because those tables have no write policies. */
+   Two callers: a signed-in user (the Generate button), whose reads go through their own
+   client so RLS applies; and the weekly pg_cron job, which proves itself with the
+   x-report-cron secret from Vault and reads with the service role. Writes to reports and
+   ai_calls always use the service role, because those tables have no write policies. */
 import { createClient } from 'npm:@supabase/supabase-js@2.117.3';
-import { parseRequest, capCheck, buildFacts, flightsCsv, buildMessages, totals } from './report-core.js';
+import { parseRequest, lastWeekStart, capCheck, buildFacts, flightsCsv, buildMessages, totals } from './report-core.js';
 import { callOpenRouter } from './openrouter.js';
 import { writeReport } from './pipeline.js';
 
@@ -40,20 +42,47 @@ Deno.serve(async req => {
     // If they're ever turned off, set SB_SECRET_KEY / SB_PUBLISHABLE_KEY as secrets instead.
     const url = env('SUPABASE_URL');
     const admin = createClient(url, env('SB_SECRET_KEY') || env('SUPABASE_SERVICE_ROLE_KEY'), { auth: noSession });
-    const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
-    const { data: auth } = jwt ? await admin.auth.getUser(jwt) : { data: null };
-    const user = auth?.user;
-    if (!user) return reply(401, { error: 'Sign in first.' });
+    // A request carrying x-report-cron (even empty) takes the schedule path, never the user path.
+    const cronSecret = req.headers.get('x-report-cron');
+    let user: any = null, scheduled = false, jwt = '';
+    if (cronSecret !== null) {
+      const { data: ok, error } = await admin.rpc('is_report_cron_secret', { p_secret: cronSecret });
+      if (error) throw error;
+      if (!ok) return reply(401, { error: 'Bad schedule secret.' });
+      scheduled = true;
+    } else {
+      jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+      const { data: auth } = jwt ? await admin.auth.getUser(jwt) : { data: null };
+      user = auth?.user;
+      if (!user) return reply(401, { error: 'Sign in first.' });
+    }
 
-    const period = parseRequest(await req.json().catch(() => null));
+    // The job sends {} and gets last week; a period_start in the body overrides it (for tests).
+    const body = await req.json().catch(() => null);
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Toronto', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(new Date()).map(x => [x.type, x.value]));
+    const torontoToday = `${p.year}-${p.month}-${p.day}`;
+    const period = parseRequest(scheduled && !body?.period_start ? { period_start: lastWeekStart(torontoToday) } : body);
     if ('error' in period) return reply(400, { error: period.error });
 
-    const { data: usage, error: uErr } = await admin.rpc('ai_usage', { p_user: user.id }).single();
+    // One scheduled report per week: skip if one is done, or one started in the last 3 minutes
+    // (rows stay 'error' until complete, so a recent one is probably still running).
+    if (scheduled) {
+      const { data: done, error } = await admin.from('reports').select('id, status, created_at')
+        .eq('triggered_by', 'schedule').eq('period_start', period.start)
+        .or(`status.eq.ok,created_at.gt."${new Date(Date.now() - 180000).toISOString()}"`).limit(1);
+      if (error) throw error;
+      if (done.length) return reply(200, { report_id: done[0].id, skipped: true });
+    }
+
+    const { data: usage, error: uErr } = await admin.rpc('ai_usage', { p_user: user?.id ?? null }).single();
     if (uErr) throw uErr;
-    const capped = capCheck({ runsToday: Number(usage.runs_today), spendUsd: Number(usage.spend_usd) }, caps);
+    // The daily cap is per person; a scheduled run has no person, so only the spend cap applies.
+    const capped = capCheck({ runsToday: scheduled ? 0 : Number(usage.runs_today), spendUsd: Number(usage.spend_usd) }, caps);
     if (capped) return reply(429, { error: capped.message, code: capped.code });
 
-    const db = createClient(url, env('SB_PUBLISHABLE_KEY') || env('SUPABASE_ANON_KEY'), {
+    // No user token on a scheduled run, so it reads with the service role.
+    const db = scheduled ? admin : createClient(url, env('SB_PUBLISHABLE_KEY') || env('SUPABASE_ANON_KEY'), {
       global: { headers: { Authorization: `Bearer ${jwt}` } }, auth: noSession,
     });
     const [rw, ng, zn, dl, fl, tn] = await Promise.all([
@@ -76,7 +105,8 @@ Deno.serve(async req => {
 
     const { data: rep, error: rErr } = await admin.from('reports').insert({
       mode: 'claude_only', period_start: period.start, period_end: period.end, model_claude: model,
-      status: 'error', created_by: user.id,   // 'error' until a complete report is stored
+      status: 'error', created_by: user?.id ?? null, triggered_by: scheduled ? 'schedule' : 'manual',
+      // status stays 'error' until a complete report is stored
     }).select('id').single();
     if (rErr) throw rErr;
     reportId = rep.id;

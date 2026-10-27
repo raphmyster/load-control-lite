@@ -13,7 +13,7 @@ const usd = v => { const n = Number(v); return esc(n > 0 && n < 0.0001 ? '<$0.00
 const secs = ms => `${(Number(ms) / 1000).toFixed(1)} s`;
 const int = v => Number(v).toLocaleString('en-CA');
 const when = iso => new Date(iso).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' });
-const LIST_COLS = 'id, created_at, period_start, period_end, mode, status, model_claude, total_cost_usd, total_latency_ms, call_count';
+const LIST_COLS = 'id, created_at, period_start, period_end, mode, status, triggered_by, model_claude, total_cost_usd, total_latency_ms, call_count';
 
 async function loadWeeks() {
   const { data, error } = await sb.from('v_route_week').select('week_start').order('week_start', { ascending: false }).limit(1000);
@@ -31,6 +31,7 @@ async function loadHistory() {
   $('historyBody').innerHTML = data.map(r => `<tr>
     <td>${esc(when(r.created_at))}</td><td>${esc(r.period_start)}</td>
     <td><span class="pill ${r.status === 'ok' ? 'ok' : 'err'}">${esc(r.status)}</span></td>
+    <td>${r.triggered_by === 'schedule' ? 'Scheduled' : 'Manual'}</td>
     <td>${usd(r.total_cost_usd)}</td><td>${secs(r.total_latency_ms)}</td><td>${esc(r.model_claude ?? '')}</td>
     <td><button class="btn small" data-open="${esc(r.id)}">Open</button></td></tr>`).join('');
 }

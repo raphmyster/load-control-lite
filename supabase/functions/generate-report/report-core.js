@@ -36,6 +36,12 @@ export function parseRequest(body) {
   return { start, end: addDays(start, 6), trendStart: addDays(start, -49) };
 }
 
+// For the scheduled run: the Monday of last week, given today's date (YYYY-MM-DD).
+export function lastWeekStart(today) {
+  const sinceMonday = (new Date(today + 'T00:00:00Z').getUTCDay() + 6) % 7;
+  return addDays(today, -sinceMonday - 7);
+}
+
 export function capCheck({ runsToday, spendUsd }, { dailyCap, spendCapUsd }) {
   if (spendUsd >= spendCapUsd) return { code: 'spend_cap', message: `AI spend has reached the $${spendCapUsd.toFixed(2)} cap, so reports are paused.` };
   if (runsToday >= dailyCap) return { code: 'daily_cap', message: `You've run ${dailyCap} reports today, the daily limit. Try again tomorrow.` };

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SECTIONS, parseRequest, capCheck, routeTable, nearLimitTable, delayTable, notesTable,
+  SECTIONS, parseRequest, lastWeekStart, capCheck, routeTable, nearLimitTable, delayTable, notesTable,
   dataQuality, flightsCsv, buildFacts, buildMessages, missingSections, stripFence, totals,
 } from './report-core.js';
 
@@ -16,6 +16,12 @@ test('parseRequest refuses anything but a real Monday', () => {
     assert.ok(parseRequest({ period_start: p }).error, String(p));
   }
   assert.ok(parseRequest(null).error);
+});
+
+test('lastWeekStart: the Monday of the week before the one containing today', () => {
+  assert.equal(lastWeekStart('2026-10-26'), '2026-10-19'); // Monday
+  assert.equal(lastWeekStart('2026-10-27'), '2026-10-19'); // Tuesday
+  assert.equal(lastWeekStart('2026-10-25'), '2026-10-12'); // Sunday
 });
 
 test('capCheck: spend cap first, then the daily cap', () => {
