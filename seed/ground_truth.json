@@ -1,0 +1,161 @@
+{
+  "seed": 214,
+  "base": "YTZ",
+  "window": {
+    "start": "2026-08-31",
+    "end": "2026-10-25"
+  },
+  "flights": 504,
+  "routes": [
+    {
+      "flight_no": "101",
+      "route": "YXU",
+      "form": "PC12",
+      "etd": "06:45"
+    },
+    {
+      "flight_no": "214",
+      "route": "YSB-YTS",
+      "form": "DH8300",
+      "etd": "07:30"
+    },
+    {
+      "flight_no": "301",
+      "route": "YOW",
+      "form": "DH8300",
+      "etd": "08:15"
+    },
+    {
+      "flight_no": "405",
+      "route": "YAM",
+      "form": "B1900D19",
+      "etd": "09:00"
+    },
+    {
+      "flight_no": "512",
+      "route": "YTS",
+      "form": "B1900D12",
+      "etd": "10:30"
+    },
+    {
+      "flight_no": "118",
+      "route": "YQG",
+      "form": "PC12",
+      "etd": "12:00"
+    },
+    {
+      "flight_no": "620",
+      "route": "YUL",
+      "form": "DH8300",
+      "etd": "13:45"
+    },
+    {
+      "flight_no": "133",
+      "route": "YSB",
+      "form": "PC12",
+      "etd": "15:20"
+    },
+    {
+      "flight_no": "305",
+      "route": "YOW",
+      "form": "DH8300",
+      "etd": "17:30"
+    }
+  ],
+  "patterns": [
+    {
+      "id": "cargo_growth",
+      "description": "Cargo on flight 405 to YAM (1900D 19-seat) grows week over week.",
+      "flight_no": "405",
+      "route": "YAM",
+      "weekly_cargo_lb": [
+        3089,
+        3275,
+        3518,
+        3743,
+        4236,
+        4697,
+        5017,
+        5583
+      ]
+    },
+    {
+      "id": "near_limit",
+      "description": "Dash 8-300 flights on the YOW route regularly load at or within 5% of a combined-zone limit: Zone 2 (2A+2B) filled to its 900 lb maximum, and on about half of them zones 1+2+3 within 5% of 2,400 lb.",
+      "form": "DH8300",
+      "flights_near": 83,
+      "of": 224,
+      "by_group": {
+        "z2": 83,
+        "all": 41
+      },
+      "by_flight_no": {
+        "214": 0,
+        "301": 42,
+        "305": 41,
+        "620": 0
+      },
+      "other_forms_near": 0
+    },
+    {
+      "id": "deice_delays",
+      "description": "A cluster of de-icing delays on one day.",
+      "date": "2026-10-20",
+      "delayed_flights": 7,
+      "total_delay_minutes": 467,
+      "cause": "de-icing"
+    },
+    {
+      "id": "late_freight",
+      "description": "Recurring notes about late forwarder freight on one route.",
+      "flight_no": "118",
+      "route": "YQG",
+      "flights_with_note": 28,
+      "of": 56
+    },
+    {
+      "id": "safety_notes",
+      "description": "Notes raising a handling or safety concern.",
+      "flights": [
+        {
+          "date": "2026-09-04",
+          "flight_no": "405",
+          "note": "Cargo strap frayed; replaced before departure."
+        },
+        {
+          "date": "2026-09-15",
+          "flight_no": "620",
+          "note": "DG paperwork missing at the gate; shipment offloaded."
+        },
+        {
+          "date": "2026-09-29",
+          "flight_no": "101",
+          "note": "Unsecured box found in Zone 3 on the walkaround; secured."
+        },
+        {
+          "date": "2026-10-08",
+          "flight_no": "301",
+          "note": "Bag cart brakes failing; cart tagged out of service."
+        },
+        {
+          "date": "2026-10-22",
+          "flight_no": "512",
+          "note": "Net anchor fitting loose in the AFT hold; maintenance informed."
+        }
+      ]
+    },
+    {
+      "id": "data_quality",
+      "description": "A stop with weights but no destination.",
+      "date": "2026-09-17",
+      "flight_no": "512",
+      "issue": "second stop has 140 lb of cargo and a blank destination; the freight was never placed"
+    },
+    {
+      "id": "routine_noise",
+      "description": "Routine notes and small delays with nothing to report.",
+      "routine_notes": 207,
+      "empty_notes": 194
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 
-import { OPERATOR, DEMO_LABEL, LIMITS_NOTE, FORMS, SPLIT_KINDS, WHOLE_KIND, FREIGHT_KEYS, FORM_POS, AIRPORTS } from './config.js';
+import { OPERATOR, DEMO_LABEL, LIMITS_NOTE, FORMS, FREIGHT_KEYS, FORM_POS, AIRPORTS } from './config.js';
 import { LOGO } from './brand.js';
 import { drawForm } from './draw.js';
 import { calc, n } from './calc.js';
+import { sum, formOf, kindsOf, placeable, activeRows, allocOf, compute, autoPlace } from './load.js';
 import * as db from './db.js';
 import { delayMinutes } from './db-map.js';
 
@@ -13,7 +14,6 @@ const store = {
 };
 const uid = () => crypto.randomUUID(); // database ids are uuids
 const isExpr = v => { const c = calc(v); return c.terms.length > 1 || /[*/()]/.test(String(v ?? '')); };
-const sum = a => a.reduce((s, x) => s + x, 0);
 const fmt = v => Math.round(v).toLocaleString('en-CA');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -32,38 +32,7 @@ function newFlight() {
   };
 }
 /* --------------------------- calculations --------------------------- */
-const formOf = f => FORMS[f.form] || FORMS.PC12;
-const kindsOf = form => form.split ? SPLIT_KINDS : WHOLE_KIND;
-const placeable = form => form.zones.filter(z => !z.na && !z.unavailable);
-const activeRows = f => f.rows.filter(r => r.dest.trim() || FREIGHT_KEYS.some(([k]) => n(r[k])));
-const allocOf = (f, rowId, kind) => (f.alloc[rowId] || {})[kind] || {};
 
-function compute(f) {
-  const form = formOf(f), kinds = kindsOf(form), zones = placeable(form);
-  const rs = activeRows(f).map(r => {
-    const parts = kinds.map(k => {
-      const amount = sum(k.from.map(key => n(r[key])));
-      const a = allocOf(f, r.id, k.id);
-      const placed = sum(zones.map(z => n(a[z.id])));
-      return { kind: k, amount, placed, unplaced: amount - placed };
-    });
-    return { r, total: sum(FREIGHT_KEYS.map(([k]) => n(r[k]))), parts };
-  });
-  const planned = {}, byKind = {}, tags = {};
-  form.zones.forEach(z => { planned[z.id] = 0; byKind[z.id] = Object.fromEntries(kinds.map(k => [k.id, 0])); tags[z.id] = []; });
-  rs.forEach(x => {
-    zones.forEach(z => {
-      let t = 0;
-      kinds.forEach(k => { const v = n(allocOf(f, x.r.id, k.id)[z.id]); byKind[z.id][k.id] += v; t += v; });
-      planned[z.id] += t;
-      if (t) tags[z.id].push({ dest: x.r.dest || '?', w: t, rowId: x.r.id, pos: f.pos?.[x.r.id]?.[z.id] });
-    });
-  });
-  const groups = form.groups.map(g => { const total = sum(g.zones.map(id => planned[id])); return { ...g, total, over: total > g.max }; });
-  const plannedTotal = sum(Object.values(planned));
-  const manifestTotal = sum(rs.map(x => x.total));
-  return { form, kinds, zones, rs, planned, byKind, tags, groups, plannedTotal, manifestTotal };
-}
 
 // zone and combined-zone maximums that the planned load goes over
 function overLimits(c) {
@@ -106,36 +75,6 @@ function warnings(f, c) {
 // when the current one has no individual limit, so each stop gets its own zone;
 // zones with their own limit, and every zone on a `shared` form (the PC12, which
 // fills J first), are shared until full.
-function autoPlace(f) {
-  const c = compute(f), form = c.form;
-  const order = form.loadOrder.map(id => form.zones.find(z => z.id === id)).filter(Boolean);
-  const room = Object.fromEntries(order.map(z => [z.id, z.max ?? Infinity]));
-  const groupRoom = Object.fromEntries(form.groups.map(g => [g.id, g.max]));
-  const capOf = z => Math.min(room[z.id], ...form.groups.filter(g => g.zones.includes(z.id)).map(g => groupRoom[g.id]));
-  const take = (z, v) => { room[z.id] -= v; form.groups.forEach(g => { if (g.zones.includes(z.id)) groupRoom[g.id] -= v; }); };
-  f.alloc = {};
-  let start = 0;
-  [...c.rs].reverse().forEach(x => {
-    const a = f.alloc[x.r.id] = {};
-    let last = -1;
-    x.parts.forEach(p => {
-      let left = p.amount;
-      const seq = [...order.slice(start), ...order.slice(0, start)];
-      // keep a stop in one zone when one has room for all of it; split only if none does
-      const whole = left > 0 && seq.find(z => capOf(z) >= left);
-      for (const z of whole ? [whole] : seq) {
-        if (left <= 0) break;
-        const put = Math.min(left, capOf(z));
-        if (put > 0) {
-          (a[p.kind.id] ||= {})[z.id] = String(Math.round(put * 10) / 10);
-          take(z, put); left -= put; last = Math.max(last, order.indexOf(z));
-        }
-      }
-    });
-    if (last >= 0 && !form.shared) start = order[last].max == null ? Math.min(last + 1, order.length - 1) : last;
-  });
-  f.manual = false;
-}
 
 function parseQuick(text) {
   const out = [], pre = { c: 'cargo', p: 'post', f: 'fast', b: 'bag' };
@@ -431,6 +370,9 @@ let printPages = { layout: 'one', manifest: true, form: true, ...store.get('lcl.
 let theme = store.get('lcl.theme', 'auto');
 const cur = () => flights.find(f => f.id === currentId);
 const isClosed = f => f?.status === 'closed';
+// a day's flights in departure order
+const byEtd = (a, b) => (a.etd || '99').localeCompare(b.etd || '99') || a.updated - b.updated;
+const flightsOn = day => flights.filter(x => x.date === day).sort(byEtd);
 function save() {
   const f = cur();
   if (f && !isClosed(f)) { f.updated = Date.now(); db.queueSave(f); }
@@ -454,7 +396,7 @@ async function boot() {
   flights.forEach(db.markSaved);
   if (!flights.length) { const f = newFlight(); flights.push(f); db.queueSave(f, { now: true }); }
   const last = store.get('lcl.current', null);
-  currentId = flights.some(f => f.id === last) ? last : flights[0].id;
+  currentId = flights.some(f => f.id === last) ? last : flightsOn(flights[0].date)[0].id; // flights load newest date first
   render();
 }
 
@@ -493,8 +435,9 @@ function render() {
   const scrolls = {}; document.querySelectorAll('[data-scroll]').forEach(el => scrolls[el.dataset.scroll] = el.scrollLeft);
   const quick = document.getElementById('quick')?.value;
 
-  document.getElementById('flightPick').innerHTML = [...flights].sort((x, y) => (y.date || '').localeCompare(x.date || '') || y.updated - x.updated)
-    .map(x => `<option value="${x.id}" ${x.id === currentId ? 'selected' : ''}>${esc(x.flightNo || 'New flight')} · ${esc(x.reg || '—')} · ${fmtDate(x.date)}${isClosed(x) ? ' · closed' : ''}</option>`).join('');
+  document.getElementById('dayPick').value = f.date;
+  document.getElementById('flightPick').innerHTML = flightsOn(f.date)
+    .map(x => `<option value="${x.id}" ${x.id === currentId ? 'selected' : ''}>${esc(x.flightNo || 'New flight')} · ${esc(x.reg || '—')} · ${esc(x.etd || '--:--')}${isClosed(x) ? ' · closed' : ''}</option>`).join('');
   const locked = isClosed(f);
   document.getElementById('view').innerHTML =
     (locked ? `<p class="closed-banner">Closed flight — read-only. Duplicate it to make changes.</p><fieldset class="locked" disabled>` : '')
@@ -627,6 +570,18 @@ function setBound(el) {
 }
 document.addEventListener('input', e => { const el = e.target; if (el.dataset?.bind && !['checkbox', 'radio'].includes(el.type) && el.tagName !== 'SELECT') setBound(el); });
 document.addEventListener('change', e => { const el = e.target; if (el.dataset?.bind && (['checkbox', 'radio', 'date', 'time'].includes(el.type) || el.tagName === 'SELECT')) setBound(el); });
+// pick a day: open its first flight; a day with no flights says so and stays put
+document.getElementById('dayPick').addEventListener('change', e => {
+  const el = e.target;
+  if (!(el.valueAsDate?.getUTCFullYear() > 2000)) return; // still typing the year
+  const first = flightsOn(el.value)[0];
+  if (!first) {
+    el.setCustomValidity('No flights on this day'); el.reportValidity();
+    setTimeout(() => { el.setCustomValidity(''); el.value = cur().date; }, 1500);
+    return;
+  }
+  currentId = first.id; save(); render();
+});
 document.getElementById('flightPick').addEventListener('change', e => { currentId = e.target.value; save(); render(); });
 
 const actions = {
@@ -646,7 +601,7 @@ const actions = {
     db.deleteFlight(f.id).then(() => {
       flights = flights.filter(x => x.id !== f.id);
       if (!flights.length) { const nf = newFlight(); flights.push(nf); db.queueSave(nf, { now: true }); }
-      currentId = flights[0].id; save(); render();
+      currentId = flightsOn(flights[0].date)[0].id; save(); render();
     }).catch(err => setStatus('error', err));
     return false;
   },

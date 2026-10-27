@@ -1,15 +1,10 @@
 #!/usr/bin/env node
 /* Fails if the form limits in the linked database differ from js/config.js.
    Uses the saved CLI login; never needs the database password. */
-import { execFileSync } from 'node:child_process';
 import { FORMS } from '../js/config.js';
 import { formRows } from './forms-sql.mjs';
+import { query } from './db-query.mjs';
 
-const query = sql => {
-  const out = execFileSync('supabase', ['db', 'query', '--linked', '--output-format', 'json', sql], { encoding: 'utf8' });
-  const parsed = JSON.parse(out);
-  return parsed.rows ?? parsed;
-};
 const key = r => JSON.stringify(Object.keys(r).sort().map(k => [k, Array.isArray(r[k]) ? r[k] : r[k] === null ? null : String(Number(r[k]) || r[k])]));
 const same = (a, b) => JSON.stringify(a.map(key).sort()) === JSON.stringify(b.map(key).sort());
 

@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/*.test.mjs js/*.test.mjs"
+    "test": "node --test scripts/*.test.mjs js/*.test.mjs seed/*.test.mjs",
+    "seed": "node seed/load.mjs",
+    "seed:truth": "node seed/generate.mjs > seed/ground_truth.json",
+    "seed:verify": "node seed/verify.mjs"
   }
 }
