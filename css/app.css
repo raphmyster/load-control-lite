@@ -222,6 +222,9 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .pill { display: inline-block; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .pill.ok { color: var(--ok); background: var(--ok-bg); }
 .pill.err { color: var(--err); background: var(--err-bg); }
+.pill.warn { color: var(--warn); background: var(--warn-bg); }
+.report-labels { margin-top: 12px; }
+.report-labels table { font-size: 13px; }
 .table-wrap { overflow-x: auto; }
 table.history { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.history th, table.history td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }

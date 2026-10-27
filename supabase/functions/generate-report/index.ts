@@ -1,4 +1,4 @@
-/* generate-report: writes the weekly ops report with Claude (Mode A, claude_only).
+/* generate-report: writes the weekly ops report, Claude only (Mode A) or Claude + Jev (Mode B, hybrid).
    Wiring only; the logic is in report-core.js, openrouter.js and pipeline.js.
    Two callers: a signed-in user (the Generate button), whose reads go through their own
    client so RLS applies; and the weekly pg_cron job, which proves itself with the
@@ -7,9 +7,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.117.3';
 import { parseRequest, lastWeekStart, capCheck, buildFacts, flightsCsv, buildMessages, totals } from './report-core.js';
 import { callOpenRouter } from './openrouter.js';
+import { callJev } from './jev.js';
+import { QUESTIONS, flightState, flaggedFlights, runJev, labelRows, jevCallRows, tooManyFailed } from './hybrid.js';
 import { writeReport } from './pipeline.js';
 
 const env = (k: string, d = '') => Deno.env.get(k) ?? d;
+// A typo in a numeric setting falls back to the default instead of becoming NaN.
+const numEnv = (k: string, d: number) => { const v = Number(Deno.env.get(k)); return Number.isFinite(v) && v > 0 ? v : d; };
+const JEV_PHASE_MS = 40000; // the Jev phase ends by then, leaving Claude 95 s of the 135 s deadline
 const FLIGHT_COLS = 'id, flight_date, flight_no, registration, form_id, etd, delay_minutes, dg_note, notes, status, '
   + 'flight_stops!flight_stops_flight_id_fkey(seq, dest, cargo_lb, post_lb, fast_lb, bag_lb)';
 
@@ -101,39 +106,76 @@ Deno.serve(async req => {
     const weekGroups = ng.data.filter(r => r.flight_date >= period.start);
     const facts = buildFacts({ period, routeWeeks: rw.data, nearGroups: ng.data, zoneNearCount: zn.count ?? 0,
       delays: dl.data, trendNotes: tn.data, flights: fl.data });
-    const messages = buildMessages({ facts, csv: flightsCsv(fl.data, weekGroups) });
+
+    const apiKey = env('OPENROUTER_API_KEY');
+    if (!apiKey) throw new Error('OPENROUTER_API_KEY is not set');
+    const hybrid = period.mode === 'hybrid';
+    const jevModel = env('JEV_MODEL', 'typesafe/jev-1.14');
 
     const { data: rep, error: rErr } = await admin.from('reports').insert({
-      mode: 'claude_only', period_start: period.start, period_end: period.end, model_claude: model,
+      mode: period.mode, period_start: period.start, period_end: period.end, model_claude: model,
+      model_jev: hybrid ? jevModel : null,
       status: 'error', created_by: user?.id ?? null, triggered_by: scheduled ? 'schedule' : 'manual',
       // status stays 'error' until a complete report is stored
     }).select('id').single();
     if (rErr) throw rErr;
     reportId = rep.id;
 
-    const apiKey = env('OPENROUTER_API_KEY');
-    if (!apiKey) throw new Error('OPENROUTER_API_KEY is not set');
+    // One log line per call and one insert per batch (a hybrid run makes ~63 Jev calls).
+    const logCalls = async (cs: any[]) => {
+      if (!cs.length) return;
+      const rows = cs.map(c => ({ report_id: reportId, provider_model: c.model, purpose: c.purpose, input_tokens: c.input_tokens,
+        output_tokens: c.output_tokens, cost_usd: c.cost_usd, latency_ms: c.latency_ms, status: c.status, error_message: c.error }));
+      for (const [i, row] of rows.entries()) {
+        console.log(JSON.stringify({ event: 'ai_call', ...row }));
+        if (cs[i].ok && !cs[i].cost_reported) console.warn(JSON.stringify({ event: 'cost_missing', report_id: reportId, model: cs[i].model }));
+      }
+      const { error } = await admin.from('ai_calls').insert(rows);
+      if (error) console.error(JSON.stringify({ event: 'ai_call_log_failed', report_id: reportId, message: error.message }));
+    };
+
+    // Mode B: Jev labels every flight; only the picked ones reach Claude. If Jev fails for
+    // too many flights, Claude reads them all (Mode A's input) and the report is 'fallback'.
+    let csv = flightsCsv(fl.data, weekGroups), jevCalls: any[] = [], fellBack = false;
+    if (hybrid) {
+      const jevTimeout = numEnv('JEV_TIMEOUT_MS', 10000);
+      const results = await runJev({
+        flights: fl.data, concurrency: numEnv('JEV_CONCURRENCY', 8), deadline: t0 + JEV_PHASE_MS,
+        // timeout capped at the phase's time left, so no request outlives the 40 s mark
+        ask: (f: any, msLeft: number) => callJev({ apiKey, model: jevModel, state: flightState(f), questions: QUESTIONS,
+          timeoutMs: Math.min(jevTimeout, msLeft) }),
+      });
+      jevCalls = jevCallRows(results);
+      await logCalls(jevCalls);
+      const labels = labelRows(reportId, results, flaggedFlights(fl.data, weekGroups), numEnv('JEV_CONFIDENCE', 0.7));
+      const { error: lErr } = await admin.from('flight_ai_labels').insert(labels);
+      if (lErr) console.error(JSON.stringify({ event: 'labels_log_failed', report_id: reportId, message: lErr.message }));
+      fellBack = tooManyFailed(results);
+      if (!fellBack) {
+        const byId = new Map(labels.map((l: any) => [l.flight_id, l] as const));
+        csv = flightsCsv(fl.data.filter(f => byId.get(f.id)?.included), weekGroups, byId);
+      }
+      console.log(JSON.stringify({ event: 'jev', report_id: reportId, flights: results.length,
+        sent: labels.filter(l => l.included).length, failed: results.filter(r => !r.label).length, fell_back: fellBack }));
+    }
+    const messages = buildMessages({ facts, csv, hybrid: hybrid && !fellBack });
+
     const result = await writeReport({
       messages,
       callModel: (m: unknown, ms: number) => callOpenRouter({ apiKey, model, messages: m, timeoutMs: ms, reasoningEffort: env('CLAUDE_REASONING', 'low') }),
       timeoutMs: Number(env('CLAUDE_TIMEOUT_MS', '45000')),
       deadline: t0 + 135000,
-      onCall: async (c: any) => {
-        const row = { report_id: reportId, provider_model: c.model, purpose: c.purpose, input_tokens: c.input_tokens,
-          output_tokens: c.output_tokens, cost_usd: c.cost_usd, latency_ms: c.latency_ms, status: c.status, error_message: c.error };
-        console.log(JSON.stringify({ event: 'ai_call', ...row }));
-        if (c.ok && !c.cost_reported) console.warn(JSON.stringify({ event: 'cost_missing', report_id: reportId, model: c.model }));
-        const { error } = await admin.from('ai_calls').insert(row);
-        if (error) console.error(JSON.stringify({ event: 'ai_call_log_failed', report_id: reportId, message: error.message }));
-      },
+      onCall: (c: any) => logCalls([c]),
     });
 
-    const update = { ...totals(result.calls), total_latency_ms: Date.now() - t0,
-      ...(result.ok ? { status: 'ok', content_md: result.content } : {}) };
+    const calls = [...jevCalls, ...result.calls];
+    const status = fellBack ? 'fallback' : 'ok';
+    const update = { ...totals(calls), total_latency_ms: Date.now() - t0,
+      ...(result.ok ? { status, content_md: result.content } : {}) };
     const { error: uErr2 } = await admin.from('reports').update(update).eq('id', reportId);
     if (uErr2) throw uErr2;
-    console.log(JSON.stringify({ event: 'report', report_id: reportId, status: result.ok ? 'ok' : 'error', ...totals(result.calls) }));
-    return result.ok ? reply(200, { report_id: reportId }) : reply(502, { error: result.error, report_id: reportId });
+    console.log(JSON.stringify({ event: 'report', report_id: reportId, mode: period.mode, status: result.ok ? status : 'error', ...totals(calls) }));
+    return result.ok ? reply(200, { report_id: reportId, status }) : reply(502, { error: result.error, report_id: reportId });
   } catch (e) {
     console.error(JSON.stringify({ event: 'report_failed', report_id: reportId, message: String((e as Error)?.message ?? e) }));
     return reply(500, { error: 'The report could not be generated. Try again later.', report_id: reportId });

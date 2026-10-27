@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SECTIONS, parseRequest, lastWeekStart, capCheck, routeTable, nearLimitTable, delayTable, notesTable,
-  dataQuality, flightsCsv, buildFacts, buildMessages, missingSections, stripFence, totals,
+  dataQuality, flightsCsv, buildFacts, buildMessages, missingSections, stripFence, totals, stopIssues, routeOf,
 } from './report-core.js';
 
 const period = parseRequest({ period_start: '2026-10-19' });
 
 test('parseRequest accepts a Monday and works out the week and the 8-week window', () => {
-  assert.deepEqual(period, { start: '2026-10-19', end: '2026-10-25', trendStart: '2026-08-31' });
+  assert.deepEqual(period, { start: '2026-10-19', end: '2026-10-25', trendStart: '2026-08-31', mode: 'claude_only' });
 });
 
 test('parseRequest refuses anything but a real Monday', () => {
@@ -144,4 +144,46 @@ test('totals adds up the logged calls', () => {
     { cost_usd: 0.0012, input_tokens: 9000, output_tokens: 1500 },
     { cost_usd: 0.0003, input_tokens: 11000, output_tokens: 400 },
   ]), { total_cost_usd: 0.0015, total_input_tokens: 20000, total_output_tokens: 1900, call_count: 2 });
+});
+
+test('parseRequest takes a mode, claude_only by default, and refuses others', () => {
+  assert.equal(parseRequest({ period_start: '2026-10-19', mode: 'hybrid' }).mode, 'hybrid');
+  assert.equal(parseRequest({ period_start: '2026-10-19', mode: 'claude_only' }).mode, 'claude_only');
+  assert.match(parseRequest({ period_start: '2026-10-19', mode: 'jev' }).error, /mode/);
+});
+
+test('stopIssues and routeOf: the per-flight pieces behind dataQuality and the CSV', () => {
+  const f = fl('2026-09-17', '512', [stop(0, 'YOW', 300), stop(1, '', 140), stop(2, '', 0)]);
+  assert.deepEqual(stopIssues(f), ['stop 2 has 140 lb and no destination']);
+  assert.equal(routeOf(f), 'YOW-?');
+});
+
+test('flightsCsv with labels adds category, mention_p, urgency and why_sent', () => {
+  const f = fl('2026-10-22', '512', [stop(0, 'YOW', 900)], { notes: 'Strap damaged' });
+  const labels = new Map([[f.id, { category: 'handling_issue', mention_p: 0.96, urgency: 3.8, reason: 'jev_mention' }]]);
+  const csv = flightsCsv([f], [], labels).split('\n');
+  assert.match(csv[0], /,notes,category,mention_p,urgency,why_sent$/);
+  assert.match(csv[1], /,Strap damaged,handling_issue,0\.96,3\.8,jev_mention$/);
+});
+
+test('flightsCsv with a failed label leaves the label cells empty', () => {
+  const f = fl('2026-10-22', '512', [stop(0, 'YOW', 900)]);
+  const labels = new Map([[f.id, { category: null, mention_p: null, urgency: null, reason: 'jev_failed' }]]);
+  assert.match(flightsCsv([f], [], labels).split('\n')[1], /,,,,jev_failed$/);
+});
+
+test('buildMessages: hybrid adds one rule and renames FLIGHTS; Mode A is unchanged', () => {
+  const plain = buildMessages({ facts: 'F', csv: 'C' });
+  const again = buildMessages({ facts: 'F', csv: 'C', hybrid: false });
+  assert.deepEqual(plain, again);
+  const [sys, user] = buildMessages({ facts: 'F', csv: 'C', hybrid: true });
+  assert.ok(sys.content.startsWith(plain[0].content));
+  assert.match(sys.content, /only the flights picked/);
+  assert.match(sys.content, /don't quote the labels/);
+  assert.match(user.content, /FLIGHTS \(CSV, only the flights picked for this report/);
+});
+
+test('totals rounds each call the way ai_calls stores it, so it equals the sum of the rows', () => {
+  const calls = Array.from({ length: 63 }, () => ({ cost_usd: 0.000030702 }));
+  assert.equal(totals(calls).total_cost_usd, 0.001953); // 63 x 0.000031
 });

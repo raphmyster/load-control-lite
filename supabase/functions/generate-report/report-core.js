@@ -23,17 +23,23 @@ const isDate = s => {
 const num = v => Number(v ?? 0);
 const lb = v => String(Math.round(num(v)));
 const change = (now, before) => before > 0 ? `${now >= before ? '+' : ''}${((now - before) / before * 100).toFixed(1)}%` : 'n/a';
-const stopWeight = s => num(s.cargo_lb) + num(s.post_lb) + num(s.fast_lb) + num(s.bag_lb);
+export const stopWeight = s => num(s.cargo_lb) + num(s.post_lb) + num(s.fast_lb) + num(s.bag_lb);
 const stopsOf = f => [...(f.flight_stops ?? [])].sort((a, b) => a.seq - b.seq);
 // the same filter as the views: a stop counts if it has a destination or any weight
-const usedStops = f => stopsOf(f).filter(s => (s.dest ?? '').trim() !== '' || stopWeight(s) > 0);
+export const usedStops = f => stopsOf(f).filter(s => (s.dest ?? '').trim() !== '' || stopWeight(s) > 0);
+export const routeOf = f => usedStops(f).map(s => (s.dest ?? '').trim() || '?').join('-');
 
-// Body: { period_start: 'YYYY-MM-DD' }, a Monday. Weeks run Monday to Sunday, as in v_route_week.
+const MODES = ['claude_only', 'hybrid'];
+
+// Body: { period_start: 'YYYY-MM-DD', mode? }. period_start is a Monday; weeks run Monday
+// to Sunday, as in v_route_week. mode defaults to claude_only (the scheduled run sends none).
 export function parseRequest(body) {
   const start = body?.period_start;
   if (!isDate(start)) return { error: 'period_start must be a date (YYYY-MM-DD)' };
   if (new Date(start + 'T00:00:00Z').getUTCDay() !== 1) return { error: 'period_start must be a Monday' };
-  return { start, end: addDays(start, 6), trendStart: addDays(start, -49) };
+  const mode = body?.mode ?? 'claude_only';
+  if (!MODES.includes(mode)) return { error: "mode must be 'claude_only' or 'hybrid'" };
+  return { start, end: addDays(start, 6), trendStart: addDays(start, -49), mode };
 }
 
 // For the scheduled run: the Monday of last week, given today's date (YYYY-MM-DD).
@@ -114,17 +120,18 @@ export function notesTable(rows, { min = 3, max = 40 } = {}) {
   return ['flight | note | flights with this note in the 8 weeks', ...lines].join('\n');
 }
 
-export function dataQuality(flights) {
+// One flight's stop problems: weight with no destination, or a destination that isn't three capital letters.
+export function stopIssues(f) {
   const issues = [];
-  for (const f of flights) {
-    for (const s of stopsOf(f)) {
-      const dest = (s.dest ?? '').trim(), w = stopWeight(s);
-      if (!dest && w > 0) issues.push(`${f.flight_no} on ${f.flight_date}: stop ${s.seq + 1} has ${lb(w)} lb and no destination`);
-      else if (dest && !/^[A-Z]{3}$/.test(dest)) issues.push(`${f.flight_no} on ${f.flight_date}: stop ${s.seq + 1} has destination "${dest}", not a 3-letter airport code`);
-    }
+  for (const s of stopsOf(f)) {
+    const dest = (s.dest ?? '').trim(), w = stopWeight(s);
+    if (!dest && w > 0) issues.push(`stop ${s.seq + 1} has ${lb(w)} lb and no destination`);
+    else if (dest && !/^[A-Z]{3}$/.test(dest)) issues.push(`stop ${s.seq + 1} has destination "${dest}", not a 3-letter airport code`);
   }
   return issues;
 }
+
+export const dataQuality = flights => flights.flatMap(f => stopIssues(f).map(i => `${f.flight_no} on ${f.flight_date}: ${i}`));
 
 const cell = v => {
   const s = String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -132,17 +139,20 @@ const cell = v => {
 };
 const byDateEtd = (a, b) => a.flight_date.localeCompare(b.flight_date) || String(a.etd ?? '').localeCompare(String(b.etd ?? ''));
 
-export function flightsCsv(flights, groups) {
+export function flightsCsv(flights, groups, labels = null) {
   const near = new Map();
   for (const r of groups) near.set(r.flight_id, [...new Set([...(near.get(r.flight_id) ?? []), r.label])]);
-  const lines = ['date,flight,route,registration,form,cargo_lb,post_lb,fast_lb,bag_lb,group_limits_at_95pct,delay_min,status,dg_note,notes'];
+  const head = 'date,flight,route,registration,form,cargo_lb,post_lb,fast_lb,bag_lb,group_limits_at_95pct,delay_min,status,dg_note,notes';
+  const lines = [labels ? `${head},category,mention_p,urgency,why_sent` : head];
   for (const f of [...flights].sort(byDateEtd)) {
     const stops = usedStops(f), sumOf = k => lb(stops.reduce((t, s) => t + num(s[k]), 0));
-    lines.push([
-      f.flight_date, f.flight_no, stops.map(s => (s.dest ?? '').trim() || '?').join('-'), f.registration, f.form_id,
+    const row = [
+      f.flight_date, f.flight_no, routeOf(f), f.registration, f.form_id,
       sumOf('cargo_lb'), sumOf('post_lb'), sumOf('fast_lb'), sumOf('bag_lb'),
       (near.get(f.id) ?? []).join('; '), f.delay_minutes ?? '', f.status, f.dg_note, f.notes,
-    ].map(cell).join(','));
+    ];
+    if (labels) { const l = labels.get(f.id) ?? {}; row.push(l.category, l.mention_p, l.urgency, l.reason); }
+    lines.push(row.map(cell).join(','));
   }
   return lines.join('\n');
 }
@@ -175,10 +185,16 @@ ${SECTIONS.map(s => `## ${s}`).join('\n')}
 - Mention a pattern across weeks when the 8-week columns show one.
 - If a section has nothing to report, write "- Nothing to report this week."`;
 
-export function buildMessages({ facts, csv }) {
+const HYBRID_RULE = `
+- FLIGHTS holds only the flights picked for this report; a classifier judged the other flights of the week routine. Its columns category, mention_p (chance the flight belongs in the report), urgency (1 to 5) and why_sent are hints: base each point on the notes and figures, and don't quote the labels.`;
+
+export function buildMessages({ facts, csv, hybrid = false }) {
+  const flights = hybrid
+    ? 'FLIGHTS (CSV, only the flights picked for this report, with the classifier\'s labels)'
+    : 'FLIGHTS (CSV, one row per flight this week)';
   return [
-    { role: 'system', content: SYSTEM },
-    { role: 'user', content: `FACTS\n${facts}\n\nFLIGHTS (CSV, one row per flight this week)\n${csv}` },
+    { role: 'system', content: hybrid ? SYSTEM + HYBRID_RULE : SYSTEM },
+    { role: 'user', content: `FACTS\n${facts}\n\n${flights}\n${csv}` },
   ];
 }
 
@@ -203,7 +219,9 @@ export function missingSections(md) {
 export function totals(calls) {
   const t = { total_cost_usd: 0, total_input_tokens: 0, total_output_tokens: 0, call_count: calls.length };
   for (const c of calls) {
-    t.total_cost_usd += num(c.cost_usd); t.total_input_tokens += num(c.input_tokens); t.total_output_tokens += num(c.output_tokens);
+    // each ai_calls row stores its cost rounded to numeric(10,6), so round before adding
+    // or the total drifts from the sum of its rows (63 Jev calls made it $0.000008 off)
+    t.total_cost_usd += Math.round(num(c.cost_usd) * 1e6) / 1e6; t.total_input_tokens += num(c.input_tokens); t.total_output_tokens += num(c.output_tokens);
   }
   t.total_cost_usd = Math.round(t.total_cost_usd * 1e6) / 1e6; // numeric(10,6)
   return t;

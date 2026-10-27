@@ -26,7 +26,11 @@
     <h2>Weekly ops report</h2>
     <form id="genForm" class="report-form">
       <label class="f">Week<select id="weekPick" required></select></label>
-      <p class="hint">Mode: Claude only. Claude reads the week's flights and notes and writes the report; every figure comes from the database.</p>
+      <label class="f">Mode<select id="modePick">
+        <option value="claude_only">Claude only</option>
+        <option value="hybrid">Claude + Jev</option>
+      </select></label>
+      <p class="hint" id="modeHint"></p>
       <div class="toolbar"><button class="btn primary" type="submit" id="genBtn">Generate</button></div>
       <p class="report-status" id="genStatus" role="status" aria-live="polite"></p>
     </form>
@@ -35,7 +39,7 @@
   <section class="card" id="historyCard" hidden>
     <h2>History</h2>
     <div class="table-wrap"><table class="history"><thead><tr>
-      <th>Created</th><th>Week</th><th>Status</th><th>Run by</th><th>Cost</th><th>Time</th><th>Model</th><th></th>
+      <th>Created</th><th>Week</th><th>Mode</th><th>Status</th><th>Run by</th><th>Cost</th><th>Time</th><th>Model</th><th></th>
     </tr></thead><tbody id="historyBody"></tbody></table></div>
   </section>
 </main>
