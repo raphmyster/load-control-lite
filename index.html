@@ -15,15 +15,27 @@
   <span class="brand" id="brand"><span class="divider" aria-hidden="true"></span><span class="app">Load Control Lite</span></span>
   <span class="poc">Demo, not for operational use</span>
   <span class="spacer"></span>
-  <select id="flightPick" aria-label="Saved flights"></select>
-  <button class="btn small" data-act="newFlight">New</button>
-  <button class="btn small" data-act="dupFlight">Duplicate</button>
-  <button class="btn small danger" data-act="delFlight">Delete</button>
+  <span class="save-status" id="saveStatus" role="status" aria-live="polite"></span>
+  <select id="flightPick" class="needs-auth" aria-label="Saved flights"></select>
+  <button class="btn small needs-auth" data-act="newFlight">New</button>
+  <button class="btn small needs-auth" data-act="dupFlight">Duplicate</button>
+  <button class="btn small needs-auth" data-act="closeFlight" id="closeBtn">Close flight</button>
+  <button class="btn small danger needs-auth" data-act="delFlight" id="delBtn">Delete</button>
   <button class="btn small" data-act="theme" id="themeBtn" aria-label="Colour theme"></button>
-  <button class="btn small" data-act="pdf">Save as PDF</button>
-  <button class="btn small primary" data-act="print">Print</button>
+  <button class="btn small needs-auth" data-act="pdf">Save as PDF</button>
+  <button class="btn small primary needs-auth" data-act="print">Print</button>
+  <button class="btn small needs-auth" data-act="signOut">Sign out</button>
 </header>
 <main id="view"></main>
+<section class="card signin" id="signin" hidden>
+  <h2>Sign in</h2>
+  <form id="signinForm">
+    <label class="f">Email<input type="email" id="signinEmail" autocomplete="username" required></label>
+    <label class="f">Password<input type="password" id="signinPassword" autocomplete="current-password" required></label>
+    <p class="hint" id="signinError" role="alert"></p>
+    <div class="toolbar"><button class="btn primary" type="submit">Sign in</button></div>
+  </form>
+</section>
 <div id="print-root"></div>
 <dialog id="limitDialog" aria-labelledby="limitTitle">
   <h2 id="limitTitle">Max limit reached</h2>

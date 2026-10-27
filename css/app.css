@@ -197,3 +197,11 @@ table.t td.has-calc::after { content: ""; position: absolute; top: 5px; right: 7
   #print-root .page:last-child { break-after: auto; }
   #print-root .page.landscape { page: land; }
 }
+/* signed out: only the sign-in card and the theme button */
+body.signed-out .needs-auth, body.signed-out #view { display: none; }
+.signin { max-width: 380px; margin: 48px auto; }
+.save-status { font-size: 12px; color: #c9d6df; white-space: nowrap; }
+.save-status.error { color: #ffb4a8; font-weight: 600; cursor: pointer; text-decoration: underline; }
+/* closed flight: read-only */
+.locked { border: 0; padding: 0; margin: 0; min-width: 0; }
+.closed-banner { background: var(--brand-2); color: #fff; border-radius: 8px; padding: 8px 14px; margin: 0 0 12px; font-weight: 600; }

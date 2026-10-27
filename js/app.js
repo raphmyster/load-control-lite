@@ -2,56 +2,16 @@
 import { OPERATOR, DEMO_LABEL, LIMITS_NOTE, FORMS, SPLIT_KINDS, WHOLE_KIND, FREIGHT_KEYS, FORM_POS, AIRPORTS } from './config.js';
 import { LOGO } from './brand.js';
 import { drawForm } from './draw.js';
+import { calc, n } from './calc.js';
+import * as db from './db.js';
+import { delayMinutes } from './db-map.js';
 
 /* ---------------------------- helpers ---------------------------- */
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable: keep in memory */ } },
 };
-const uid = () => Math.random().toString(36).slice(2, 10);
-// Weights may be typed as sums, e.g. 120+45+30 or 3*20. Returns the value and the
-// top-level terms (for the breakdown pop-up). No eval: a small recursive-descent parser.
-function calc(v) {
-  const s = String(v ?? '').replace(/[,\s]/g, '').replace(/[x×]/gi, '*').replace(/[-+*/(]+$/, '');
-  let i = 0;
-  const peek = () => s[i];
-  function factor() {
-    if (peek() === '-') { i++; return -factor(); }
-    if (peek() === '+') { i++; return factor(); }
-    if (peek() === '(') { i++; const v = expr().value; if (peek() === ')') i++; return v; }
-    const m = s.slice(i).match(/^(\d+\.?\d*|\.\d+)/);
-    if (!m) throw 0;
-    i += m[0].length;
-    return parseFloat(m[0]);
-  }
-  function term() {
-    let v = factor();
-    while (peek() === '*' || peek() === '/') { const op = s[i++], r = factor(); v = op === '*' ? v * r : v / r; }
-    return v;
-  }
-  function expr() {
-    const terms = [];
-    let start = i, v = term();
-    terms.push({ text: s.slice(start, i), value: v });
-    while (peek() === '+' || peek() === '-') {
-      const op = s[i++]; start = i;
-      const t = term();
-      terms.push({ text: op + s.slice(start, i), value: op === '-' ? -t : t });
-      v += op === '-' ? -t : t;
-    }
-    return { value: v, terms };
-  }
-  if (!s) return { value: 0, terms: [] };
-  try {
-    const r = expr();
-    if (i < s.length || !Number.isFinite(r.value)) throw 0;
-    return r;
-  } catch {
-    const x = parseFloat(s);
-    return { value: Number.isFinite(x) ? x : 0, terms: [] };
-  }
-}
-const n = v => calc(v).value;
+const uid = () => crypto.randomUUID(); // database ids are uuids
 const isExpr = v => { const c = calc(v); return c.terms.length > 1 || /[*/()]/.test(String(v ?? '')); };
 const sum = a => a.reduce((s, x) => s + x, 0);
 const fmt = v => Math.round(v).toLocaleString('en-CA');
@@ -65,23 +25,12 @@ const AIRPORT_CODES = new Set(AIRPORTS.map(a => a.code));
 function newRow() { return { id: uid(), dest: '', cargo: '', post: '', fast: '', bag: '' }; }
 function newFlight() {
   return {
-    id: uid(), date: todayISO(), flightNo: '', reg: '', form: 'PC12', etd: '',
+    id: uid(), date: todayISO(), flightNo: '', reg: '', form: 'PC12', etd: '', atd: '', status: 'draft',
     special: { hr: false, aog: false }, dgNote: '',
     rows: [newRow(), newRow()], alloc: {}, pos: {}, manual: false,
     notes: '', loadmaster: '', updated: Date.now(),
   };
 }
-function sampleFlight() {
-  const f = newFlight();
-  Object.assign(f, { flightNo: '214', reg: 'C-FNBQ', etd: '10:30', dgNote: 'na' });
-  f.rows = [
-    Object.assign(newRow(), { dest: 'YSB', cargo: '545', bag: '40' }),
-    Object.assign(newRow(), { dest: 'YTS', cargo: '310', post: '45', fast: '20', bag: '60' }),
-  ];
-  autoPlace(f);
-  return f;
-}
-
 /* --------------------------- calculations --------------------------- */
 const formOf = f => FORMS[f.form] || FORMS.PC12;
 const kindsOf = form => form.split ? SPLIT_KINDS : WHOLE_KIND;
@@ -396,6 +345,8 @@ function viewFlight(f) {
     <label class="f">A/C registration${txt('flight:reg', f.reg, '', 'style="text-transform:uppercase" placeholder="e.g. C-FNBQ"')}</label>
     <label class="f">Load control form<select data-bind="flight:form">${Object.entries(FORMS).map(([k, x]) => `<option value="${k}" ${k === f.form ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
     <label class="f">ETD<input type="time" data-bind="flight:etd" value="${esc(f.etd)}"></label>
+    <label class="f">Actual departure<input type="time" data-bind="flight:atd" value="${esc(f.atd || '')}"></label>
+    <p class="f hint">${delayMinutes(f.etd, f.atd) ? `Delay: ${delayMinutes(f.etd, f.atd)} min` : ''}</p>
     <label class="f">Load master (print name)${txt('flight:loadmaster', f.loadmaster)}</label>
   </div>
   <h3>Special handling</h3><div class="checks">
@@ -473,21 +424,67 @@ function viewPrint() {
 }
 
 /* ------------------------------ state ------------------------------ */
-let flights = store.get('lcl.flights', null);
-if (!Array.isArray(flights) || !flights.length) flights = [sampleFlight()];
-let currentId = store.get('lcl.current', flights[0].id);
-if (!flights.find(f => f.id === currentId)) currentId = flights[0].id;
+// Flights live in Supabase; localStorage keeps only per-viewer choices.
+let flights = [];
+let currentId = null;
 let printPages = { layout: 'one', manifest: true, form: true, ...store.get('lcl.pages', {}) };
 let theme = store.get('lcl.theme', 'auto');
 const cur = () => flights.find(f => f.id === currentId);
+const isClosed = f => f?.status === 'closed';
 function save() {
-  const f = cur(); if (f) f.updated = Date.now();
-  store.set('lcl.flights', flights); store.set('lcl.current', currentId); store.set('lcl.pages', printPages);
+  const f = cur();
+  if (f && !isClosed(f)) { f.updated = Date.now(); db.queueSave(f); }
+  store.set('lcl.current', currentId); store.set('lcl.pages', printPages);
 }
+
+async function boot() {
+  const user = await db.currentUser();
+  document.body.classList.toggle('signed-out', !user);
+  document.getElementById('signin').hidden = !!user;
+  if (!user) { setStatus(''); render(); return; }
+  try {
+    flights = await db.loadFlights();
+  } catch (err) {
+    // Don't create or save anything: an empty list here would look like lost data.
+    console.error(err);
+    document.getElementById('view').innerHTML = `<section class="card"><h2>Couldn't load flights</h2>
+      <p>${esc(err.message || String(err))}</p><button class="btn primary" data-act="reload">Try again</button></section>`;
+    return;
+  }
+  flights.forEach(db.markSaved);
+  if (!flights.length) { const f = newFlight(); flights.push(f); db.queueSave(f, { now: true }); }
+  const last = store.get('lcl.current', null);
+  currentId = flights.some(f => f.id === last) ? last : flights[0].id;
+  render();
+}
+
+function setStatus(state, err) {
+  const el = document.getElementById('saveStatus');
+  el.className = 'save-status' + (state === 'error' ? ' error' : '');
+  el.textContent = { saving: 'Saving…', saved: 'Saved', error: 'Not saved — retry' }[state] || '';
+  el.title = err?.message || '';
+  if (err) console.error(err);
+}
+db.onSaveStatus(setStatus);
+document.getElementById('saveStatus').addEventListener('click', () => db.retrySave());
+window.addEventListener('beforeunload', e => { if (db.hasUnsaved()) e.preventDefault(); });
+
+document.getElementById('signinForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('signinError');
+  msg.textContent = '';
+  try {
+    await db.signIn(document.getElementById('signinEmail').value, document.getElementById('signinPassword').value);
+    document.getElementById('signinPassword').value = '';
+    boot();
+  } catch (err) { msg.textContent = err.message || 'Sign-in failed'; }
+});
 
 /* ------------------------------ render ------------------------------ */
 let focusBind = null;
 function render() {
+  document.getElementById('themeBtn').textContent = { auto: '◐ Auto', light: '☀ Light', dark: '☾ Dark' }[theme];
+  if (!cur()) return;
   const f = cur(), c = compute(f);
   // keep focus, caret and horizontal scroll across re-renders
   const a = document.activeElement, key = a?.dataset?.bind;
@@ -497,9 +494,13 @@ function render() {
   const quick = document.getElementById('quick')?.value;
 
   document.getElementById('flightPick').innerHTML = [...flights].sort((x, y) => (y.date || '').localeCompare(x.date || '') || y.updated - x.updated)
-    .map(x => `<option value="${x.id}" ${x.id === currentId ? 'selected' : ''}>${esc(x.flightNo || 'New flight')} · ${esc(x.reg || '—')} · ${fmtDate(x.date)}</option>`).join('');
-  document.getElementById('themeBtn').textContent = { auto: '◐ Auto', light: '☀ Light', dark: '☾ Dark' }[theme];
-  document.getElementById('view').innerHTML = viewFlight(f) + viewManifest(f) + viewLoad(f, c) + viewPrint();
+    .map(x => `<option value="${x.id}" ${x.id === currentId ? 'selected' : ''}>${esc(x.flightNo || 'New flight')} · ${esc(x.reg || '—')} · ${fmtDate(x.date)}${isClosed(x) ? ' · closed' : ''}</option>`).join('');
+  const locked = isClosed(f);
+  document.getElementById('view').innerHTML =
+    (locked ? `<p class="closed-banner">Closed flight — read-only. Duplicate it to make changes.</p><fieldset class="locked" disabled>` : '')
+    + viewFlight(f) + viewManifest(f) + viewLoad(f, c) + (locked ? '</fieldset>' : '') + viewPrint();
+  document.getElementById('closeBtn').disabled = locked;
+  document.getElementById('delBtn').disabled = locked;
 
   document.querySelectorAll('[data-scroll]').forEach(el => { if (scrolls[el.dataset.scroll]) el.scrollLeft = scrolls[el.dataset.scroll]; });
   if (quick) { const q = document.getElementById('quick'); if (q) q.value = quick; }
@@ -570,6 +571,7 @@ function landing(e) {
   return { zone, area, at: clampIn(rectOf(area), ...want, drag.w, drag.h), moved: Math.hypot(p.x - drag.start.x, p.y - drag.start.y) };
 }
 document.addEventListener('pointerdown', e => {
+  if (isClosed(cur())) return;
   const g = e.target.closest?.('.sheet .chip');
   if (!g || e.button > 0) return;
   e.preventDefault();
@@ -606,10 +608,12 @@ document.addEventListener('pointercancel', e => endDrag(e, true));
 const manifestChanged = f => { if (!f.manual) autoPlace(f); };
 
 function setBound(el) {
+  if (isClosed(cur()) && !el.dataset.bind.startsWith('pp:')) return;
   const f = cur(), [kind, a, b, d] = el.dataset.bind.split(':');
   const val = el.type === 'checkbox' ? el.checked : el.value;
   switch (kind) {
     case 'flight':
+      if (a === 'date' && !val) break; // a flight always needs a date
       if (a === 'reg') f.reg = String(val).toUpperCase();
       else if (a === 'form') { f.form = val; f.pos = {}; autoPlace(f); }
       else f[a] = val;
@@ -629,7 +633,7 @@ const actions = {
   newFlight() { const f = newFlight(); flights.push(f); currentId = f.id; window.scrollTo(0, 0); },
   dupFlight() {
     const src = cur(), f = JSON.parse(JSON.stringify(src));
-    Object.assign(f, { id: uid(), date: todayISO(), loadmaster: '', updated: Date.now() });
+    Object.assign(f, { id: uid(), date: todayISO(), loadmaster: '', status: 'draft', atd: '', updated: Date.now() });
     const map = {}; f.rows.forEach(r => { map[r.id] = r.id = uid(); });
     f.alloc = Object.fromEntries(Object.entries(src.alloc).filter(([k]) => map[k]).map(([k, x]) => [map[k], x]));
     f.pos = Object.fromEntries(Object.entries(src.pos || {}).filter(([k]) => map[k]).map(([k, x]) => [map[k], x]));
@@ -637,11 +641,32 @@ const actions = {
   },
   delFlight() {
     const f = cur();
+    if (isClosed(f)) return false;
     if (!confirm(`Delete flight ${f.flightNo || '(no number)'} on ${fmtDate(f.date)}?`)) return false;
-    flights = flights.filter(x => x.id !== f.id);
-    if (!flights.length) flights.push(newFlight());
-    currentId = flights[0].id;
+    db.deleteFlight(f.id).then(() => {
+      flights = flights.filter(x => x.id !== f.id);
+      if (!flights.length) { const nf = newFlight(); flights.push(nf); db.queueSave(nf, { now: true }); }
+      currentId = flights[0].id; save(); render();
+    }).catch(err => setStatus('error', err));
+    return false;
   },
+  closeFlight() {
+    const f = cur();
+    if (isClosed(f) || blockedByLimits()) return false;
+    if (!confirm(`Close flight ${f.flightNo || '(no number)'}? It becomes read-only and can't be reopened.`)) return false;
+    f.status = 'closed';
+    db.queueSave(f, { now: true });
+    render();
+    return false;
+  },
+  signOut() {
+    db.flush().then(ok => {
+      if (!ok && !confirm('Some changes could not be saved. Sign out anyway and lose them?')) return;
+      return db.signOut().then(() => { flights = []; currentId = null; boot(); });
+    });
+    return false;
+  },
+  reload() { location.reload(); return false; },
   addRow() { cur().rows.push(newRow()); },
   reverse() { const f = cur(); f.rows.reverse(); manifestChanged(f); },
   rowUp(id) { const f = cur(), r = f.rows, i = r.findIndex(x => x.id === id); if (i > 0) [r[i - 1], r[i]] = [r[i], r[i - 1]]; manifestChanged(f); },
@@ -708,7 +733,7 @@ function doPrint() {
   document.title = savedTitle;
 }
 // printing from the browser menu (Ctrl/Cmd+P) gets the same pages
-window.addEventListener('beforeprint', () => { if (!printing) fillPrint(); });
+window.addEventListener('beforeprint', () => { if (!printing && cur()) fillPrint(); });
 window.addEventListener('afterprint', () => { document.title = savedTitle; });
 
 document.addEventListener('click', e => {
@@ -720,4 +745,4 @@ document.addEventListener('click', e => {
 document.getElementById('brand').insertAdjacentHTML('afterbegin', LOGO('logo'));
 // one pick list shared by every destination cell
 document.body.insertAdjacentHTML('beforeend', `<datalist id="airports">${AIRPORTS.map(a => `<option value="${a.code}">${esc(a.city)}</option>`).join('')}</datalist>`);
-render();
+boot();
