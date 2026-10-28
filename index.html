@@ -12,21 +12,34 @@
 </head>
 <body>
 <header class="topbar">
-  <span class="brand" id="brand"><span class="divider" aria-hidden="true"></span><span class="app">Load Control Lite</span></span>
-  <span class="poc">Demo, not for operational use</span>
+  <span class="brand" id="brand"><span class="divider" aria-hidden="true"></span><span class="titles"><span class="app">Load Control Lite</span><span class="poc">Demo, not for operational use</span></span></span>
   <span class="spacer"></span>
   <span class="save-status" id="saveStatus" role="status" aria-live="polite"></span>
-  <input type="date" id="dayPick" class="needs-auth" aria-label="Flight date">
-  <select id="flightPick" class="needs-auth" aria-label="Saved flights"></select>
-  <button class="btn small needs-auth" data-act="newFlight">New</button>
-  <button class="btn small needs-auth" data-act="dupFlight">Duplicate</button>
-  <button class="btn small needs-auth" data-act="closeFlight" id="closeBtn">Close flight</button>
-  <button class="btn small danger needs-auth" data-act="delFlight" id="delBtn">Delete</button>
-  <a class="btn small needs-auth" href="reports.html">Reports</a>
-  <button class="btn small" data-act="theme" id="themeBtn" aria-label="Colour theme"></button>
-  <button class="btn small needs-auth" data-act="pdf">Save as PDF</button>
-  <button class="btn small primary needs-auth" data-act="print">Print</button>
-  <button class="btn small needs-auth" data-act="signOut">Sign out</button>
+  <nav class="nav" aria-label="Flight controls">
+    <span class="group needs-auth">
+      <input type="date" id="dayPick" aria-label="Flight date">
+      <select id="flightPick" aria-label="Saved flights"></select>
+    </span>
+    <span class="group needs-auth">
+      <button class="btn small" data-act="newFlight">New</button>
+      <button class="btn small" data-act="dupFlight">Duplicate</button>
+    </span>
+    <span class="group needs-auth">
+      <a class="btn small" href="reports.html">Reports</a>
+      <button class="btn small primary" data-act="print">Print</button>
+    </span>
+    <details class="menu">
+      <summary class="btn small icon" aria-label="More actions">⋯</summary>
+      <div class="menu-list">
+        <button class="needs-auth" data-act="closeFlight" id="closeBtn">Close flight</button>
+        <button class="needs-auth" data-act="pdf">Save as PDF</button>
+        <button class="danger needs-auth" data-act="delFlight" id="delBtn">Delete flight</button>
+        <hr class="needs-auth">
+        <button data-act="theme" id="themeBtn" aria-label="Colour theme"></button>
+        <button class="needs-auth" data-act="signOut">Sign out</button>
+      </div>
+    </details>
+  </nav>
 </header>
 <main id="view"></main>
 <section class="card signin" id="signin" hidden>

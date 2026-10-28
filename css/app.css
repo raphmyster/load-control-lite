@@ -55,7 +55,34 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand .divider { width: 1px; height: 28px; background: rgba(255, 255, 255, .28); }
 .brand .app { font-weight: 700; font-size: 16px; letter-spacing: .01em; }
 .poc { font-size: 11px; font-weight: 600; color: #a6ebe1; background: rgba(42, 157, 143, .18); border: 1px solid rgba(42, 157, 143, .5); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+.brand .titles { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.brand .titles .poc { font-size: 10px; padding: 0 8px; }
 .topbar .spacer { flex: 1; }
+/* nav: clusters separated by thin rules; secondary actions live in the ⋯ menu */
+.nav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.nav .group { display: flex; align-items: center; gap: 6px; }
+.nav .group + .group, .nav .group + .menu { border-left: 1px solid rgba(255, 255, 255, .2); padding-left: 10px; margin-left: 4px; }
+.menu { position: relative; }
+.menu summary { list-style: none; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu[open] summary { background: rgba(255, 255, 255, .14); }
+.menu-list {
+  position: absolute; right: 0; top: calc(100% + 8px); min-width: 180px; padding: 6px; z-index: 20;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  display: flex; flex-direction: column;
+}
+.menu-list button { text-align: left; padding: 8px 12px; border: 0; border-radius: 6px; background: none; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.menu-list button:hover:not(:disabled) { background: var(--zone); }
+.menu-list button:disabled { opacity: .45; cursor: default; }
+.menu-list button.danger { color: var(--err); }
+.menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
+body.signed-out .nav .menu { border-left: 0; padding-left: 0; margin-left: 0; }
+@media (max-width: 1000px) {
+  .topbar .spacer { display: none; }
+  .nav { flex-basis: 100%; }
+  .nav .menu { margin-left: auto; }
+  .save-status { margin-left: auto; }
+}
 .topbar select, .topbar input[type="date"] { min-width: 0; max-width: 280px; min-height: 36px; width: auto; background: rgba(255, 255, 255, .08); border-color: rgba(255, 255, 255, .28); color: #fff; border-radius: 999px; padding: 4px 14px; }
 .topbar select option { color: #1c2529; background: #fff; }
 .topbar select:focus, .topbar .btn:focus-visible { outline-color: var(--brand-2); }
@@ -81,6 +108,9 @@ main { padding: 24px 16px; max-width: 1180px; margin: 0 auto; }
 .card h3 { font-size: 12px; margin: 20px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
 .hint { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
 .grid-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+/* load master takes two columns so the last row packs left with no hole */
+.grid-form .wide { grid-column: span 2; }
+.delay { color: var(--warn); background: var(--warn-bg); border-radius: 999px; padding: 0 6px; margin-left: 4px; font-size: 11px; }
 label.f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
 input[type=text], input[type=date], input[type=time], select, textarea {
   min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); width: 100%;

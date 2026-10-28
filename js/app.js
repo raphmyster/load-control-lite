@@ -284,9 +284,8 @@ function viewFlight(f) {
     <label class="f">A/C registration${txt('flight:reg', f.reg, '', 'style="text-transform:uppercase" placeholder="e.g. C-FNBQ"')}</label>
     <label class="f">Load control form<select data-bind="flight:form">${Object.entries(FORMS).map(([k, x]) => `<option value="${k}" ${k === f.form ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
     <label class="f">ETD<input type="time" data-bind="flight:etd" value="${esc(f.etd)}"></label>
-    <label class="f">Actual departure<input type="time" data-bind="flight:atd" value="${esc(f.atd || '')}"></label>
-    <p class="f hint">${delayMinutes(f.etd, f.atd) ? `Delay: ${delayMinutes(f.etd, f.atd)} min` : ''}</p>
-    <label class="f">Load master (print name)${txt('flight:loadmaster', f.loadmaster)}</label>
+    <label class="f"><span>Actual departure${delayMinutes(f.etd, f.atd) ? ` <span class="delay">+${delayMinutes(f.etd, f.atd)} min</span>` : ''}</span><input type="time" data-bind="flight:atd" value="${esc(f.atd || '')}"></label>
+    <label class="f wide">Load master (print name)${txt('flight:loadmaster', f.loadmaster)}</label>
   </div>
   <h3>Special handling</h3><div class="checks">
     ${chk('special:hr', f.special.hr, 'Human remains (form req.)')}${chk('special:aog', f.special.aog, 'AOG')}
@@ -425,7 +424,7 @@ document.getElementById('signinForm').addEventListener('submit', async e => {
 /* ------------------------------ render ------------------------------ */
 let focusBind = null;
 function render() {
-  document.getElementById('themeBtn').textContent = { auto: '◐ Auto', light: '☀ Light', dark: '☾ Dark' }[theme];
+  document.getElementById('themeBtn').textContent = 'Theme: ' + { auto: '◐ Auto', light: '☀ Light', dark: '☾ Dark' }[theme];
   if (!cur()) return;
   const f = cur(), c = compute(f);
   // keep focus, caret and horizontal scroll across re-renders
@@ -692,6 +691,8 @@ window.addEventListener('beforeprint', () => { if (!printing && cur()) fillPrint
 window.addEventListener('afterprint', () => { document.title = savedTitle; });
 
 document.addEventListener('click', e => {
+  // close the ⋯ menu on any click outside it, or on a menu action
+  document.querySelectorAll('details.menu[open]').forEach(m => { if (!m.contains(e.target) || e.target.closest('[data-act]')) m.open = false; });
   const b = e.target.closest('[data-act]');
   if (b && actions[b.dataset.act]) { if (actions[b.dataset.act](b.dataset.id) !== false) { save(); render(); } }
 });
