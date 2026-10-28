@@ -864,4 +864,14 @@ An independent subagent read the plan against the repo on 2026-10-28 and ran the
 
 ## Added during execution
 
-(Empty until the build.)
+- **Task 0, 2026-10-28.** `flight_ai_labels` holds 189 labels: the week of 2026-10-19 (63 flights) labelled by three hybrid runs. Urgency by category: `routine` 1.0–2.3 (135 labels), `data_quality` 2.0–2.3, `handling_issue` 1.8–2.7, `other` 1.8–3.0, `delay_freight` 2.0–3.7, `delay_weather` 2.6–3.9, `safety_concern` 3.0–4.7. At 3, about 5 alerts a week, most of them weather delays. At 4, only safety flights. The user chose **4**; `alert.js`, `index.ts`, the README and the tests use it. The Task 2 urgency test checks 4 and 3.9 at the default, and 3 with an explicit threshold.
+- Tasks 1–6 and 8 written. `npm test`: 103 pass (90 before, 10 in `alert.test.mjs`, 3 in `resend.test.mjs`). Deno isn't installed, so `index.ts` is type-checked only by the deploy.
+- The pg_net queue's sequence is `net.http_request_queue_id_seq`, as the SQL check assumes.
+- Resend's docs match `resend.js`: `to` takes an array, `Idempotency-Key` is up to 256 characters and kept 24 hours, and the answer is `{ id }`.
+- Before the migration, the Alerts query returns `PGRST205` (no table) as an error, not a throw, so the card stays hidden and History loads. The card itself is checked after Task 7.
+- **Task 7, 2026-10-28.** The user created a Resend key with sending access only; `ALERT_TO` is the Resend account's own address, so the shared sender can reach it. The first `secrets set` failed on a malformed line in `.env.local` (`CliProjectEnvParseError`), which the user fixed. `ALERT_TO`, `RESEND_API_KEY` and `OPENROUTER_API_KEY` set.
+- `supabase functions deploy flight-alert --use-api` bundled the `../generate-report/` imports without complaint, so no `_shared/` move was needed. Before the migration, calls without a secret got the 500 message (no secret-check RPC yet); after it, no header and a wrong header both get 401 "Bad alert secret.", and GET gets 405.
+- Migration applied. `flight_alert_check.sql`, `rls_check.sql` and `save_flight_check.sql` pass; a deliberate failing assert run the same way does report an error, so a clean run is a real pass.
+- The test flights were closed through `save_flight()` as the demo user in one committed transaction, the same path the app's Close button takes. T901 (DG note `UN3480 lithium ion batteries`, note about the missing DG acceptance checklist): `safety_concern` at confidence 1.000, urgency 5.0, mention 0.96, email `sent`. Close at 16:12:21.6 UTC, email accepted by Resend at 16:12:23.3, under 2 s. T902 (`Loaded as planned`): `routine` at 0.98, urgency 1.1, no alert. Two `jev_flight_close` calls: 721 and 737 input tokens, $0.000030 and $0.000031, 212 ms and 163 ms.
+- Re-send: `select public.send_flight_closed('<T901 id>')` → `net._http_response` 200 `{"skipped":true}`; still one email sent.
+- The Alerts card's query, run in a signed-in tab, returns the T901 row with its flight joined. The card itself isn't seen rendered until the site is pushed: the local preview port was held by another session's older copy.

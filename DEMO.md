@@ -26,6 +26,8 @@ If nothing is back after about 35 seconds, open the existing Claude-only report 
 
 **3:15–4:15 · Running it safely.** History: both modes, the Scheduled row from the Monday job, the cost of each run. Open the fallback report and its banner: Jev failed, Claude read every flight, and the page says so. Then the caps: 5 runs a person a day and $2.00 in total, checked before any AI call, plus the key's own limit at OpenRouter. ([history](docs/screenshots/06-history.jpg), [fallback](docs/screenshots/05-fallback.jpg))
 
+**Optional, if there's time · Same-day alert.** In the flight view, make a new flight for today with a DG note about lithium batteries and a loadmaster note saying the DG acceptance checklist is missing, then close it. Within a few seconds the email arrives (show it on a phone) and the Alerts card on Reports lists it. Point out that code decides, not the model: safety concern or urgency 4 and up, and the threshold was picked from stored labels. If the email is slow, show the Alerts row and the function log line. The test flight then sits in next Monday's report, so delete it afterwards (RUNBOOK section 14 shows where it is).
+
 **4:15–5:00 · The repo.** `supabase/migrations/` (every schema change is a file, with RLS on every table), the tests beside each module, and `docs/plans/`: one plan per milestone, each reviewed before building, each ending with what actually happened.
 
 ## If something fails live

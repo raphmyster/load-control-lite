@@ -47,6 +47,27 @@ async function loadHistory() {
     <td><button class="btn small" data-open="${esc(r.id)}">Open</button></td></tr>`).join('');
 }
 
+const ALERT_WHY = { safety_concern: 'Safety concern', urgency: 'Follow-up', no_label: 'No Jev label, has notes' };
+const EMAIL_PILL = { sent: 'ok', capped: 'warn', off: 'muted', pending: 'warn' };
+
+// Same-day alerts from closed flights (M9). Never throws: a failed query leaves the card
+// hidden and History still loads.
+async function loadAlerts() {
+  const { data, error } = await sb.from('flight_close_labels')
+    .select('created_at, alert_reason, category, urgency, email_status, flights(flight_no, flight_date, registration)')
+    .not('alert_reason', 'is', null).order('created_at', { ascending: false }).limit(20);
+  if (error) { console.warn('alerts', error.message); return; }
+  $('alertsCard').hidden = false;
+  $('alertsBody').innerHTML = data.length ? data.map(a => `<tr>
+    <td>${esc(when(a.created_at))}</td>
+    <td>${esc(a.flights?.flight_no || '–')} · ${esc(a.flights?.flight_date ?? '')} · ${esc(a.flights?.registration || '')}</td>
+    <td>${esc(ALERT_WHY[a.alert_reason] ?? a.alert_reason)}</td>
+    <td>${esc(a.category ?? '–')}</td>
+    <td>${esc(a.urgency ?? '–')}</td>
+    <td><span class="pill ${EMAIL_PILL[a.email_status] ?? 'err'}">${esc(a.email_status)}</span></td></tr>`).join('')
+    : '<tr><td colspan="6">No alerts yet.</td></tr>';
+}
+
 // Jev's decision for each flight of a hybrid report: the flights Claude read first, then the rest.
 // On a fallback run Claude read every flight, so the table says what Jev would have sent.
 function labelsHtml(labels, fellBack) {
@@ -140,7 +161,7 @@ async function boot() {
   if (!user) return;
   $('generator').hidden = false;
   showHint();
-  try { await Promise.all([loadWeeks(), loadHistory()]); }
+  try { await Promise.all([loadWeeks(), loadHistory(), loadAlerts()]); }
   catch (err) { console.error(err); $('genStatus').className = 'report-status error'; $('genStatus').textContent = `Couldn't load: ${err.message}`; }
 }
 

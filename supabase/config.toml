@@ -419,3 +419,7 @@ enabled = true
 # new API keys; the gateway check relies on the legacy JWT secret.
 [functions.generate-report]
 verify_jwt = false
+
+# Called only by the flights_closed_alert trigger, which sends a Vault secret, not a user token.
+[functions.flight-alert]
+verify_jwt = false

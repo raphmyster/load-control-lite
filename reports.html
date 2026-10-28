@@ -36,6 +36,13 @@
     </form>
   </section>
   <section class="card" id="reportCard" hidden></section>
+  <section class="card" id="alertsCard" hidden>
+    <h2>Alerts</h2>
+    <p class="hint">Sent when a closed flight's notes look like a safety concern or need follow-up within a day. Jev labels the notes; code decides.</p>
+    <div class="table-wrap"><table class="history"><thead><tr>
+      <th>Closed</th><th>Flight</th><th>Why</th><th>Category</th><th>Urgency</th><th>Email</th>
+    </tr></thead><tbody id="alertsBody"></tbody></table></div>
+  </section>
   <section class="card" id="historyCard" hidden>
     <h2>History</h2>
     <div class="table-wrap"><table class="history"><thead><tr>

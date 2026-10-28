@@ -154,3 +154,35 @@ supabase secrets set ALLOWED_ORIGINS=https://loadcontrol.raphaelattar.com </dev/
 ```
 
 The local preview stops working for reports after this.
+
+## 14. A closed flight didn't alert
+
+The `flight-alert` function runs a few seconds after a flight is closed. Each closed flight gets one row in `flight_close_labels`; an alert is a row with `alert_reason` set, and `email_status` says what happened to the email (`sent`, `failed`, `capped`, `off`, or `pending` while it's being sent).
+
+Recent rows:
+
+```bash
+supabase db query --linked "select l.created_at, f.flight_no, f.flight_date, l.category, l.urgency, l.alert_reason, l.email_status, l.email_error, l.error_message from flight_close_labels l join flights f on f.id = l.flight_id order by l.created_at desc limit 20" </dev/null
+```
+
+Flights the alert missed: closed today with no row, or with a row stuck at `pending` for more than 5 minutes (the function stopped between storing the row and sending):
+
+```bash
+supabase db query --linked "select f.id, f.flight_no, f.updated_at, l.email_status from flights f left join flight_close_labels l on l.flight_id = f.id where f.status = 'closed' and f.updated_at >= (date_trunc('day', now() at time zone 'America/Toronto') at time zone 'America/Toronto') and (l.id is null or (l.email_status = 'pending' and l.created_at < now() - interval '5 minutes'))" </dev/null
+```
+
+What each outcome means:
+- **No row.** The function never got far enough. Check its logs (Edge Functions → flight-alert → Logs) and `net._http_response` (kept about 6 hours). The trigger logs a warning instead of failing the close, so a missing Vault secret shows up only there.
+- **`off`.** `ALERT_TO` or `RESEND_API_KEY` isn't set.
+- **`capped`.** 10 emails were already sent today (`ALERT_DAILY_CAP`).
+- **`failed`.** `email_error` has Resend's answer. With the shared sender, Resend refuses any address other than the account's own.
+- **`no_label` alerts on every flight with notes.** Jev is failing or the $2.00 spend cap is reached; `error_message` says which. The spend cap is a lifetime total.
+
+To re-send one flight, delete its row, then queue it again as postgres:
+
+```sql
+delete from flight_close_labels where flight_id = '<flight id>';
+select public.send_flight_closed('<flight id>');
+```
+
+To stop the emails but keep labelling: `supabase secrets unset ALERT_TO </dev/null`. To stop everything, including the Jev calls: `alter table public.flights disable trigger flights_closed_alert` (and `enable` to turn it back on).
