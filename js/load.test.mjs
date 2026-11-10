@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FORMS } from './config.js';
-import { autoPlace, compute } from './load.js';
+import { autoPlace, compute, balanceRow, syncRow } from './load.js';
 
 // small fixed-seed generator so the test is repeatable
 function rng(seed) {
@@ -34,4 +34,56 @@ test('a light load is placed in full', () => {
   const f = flight('PC12', [{ cargo: '545', bag: '40' }, { cargo: '310', post: '45', bag: '60' }]);
   autoPlace(f);
   assert.ok(compute(f).rs.every(x => x.parts.every(p => Math.abs(p.unplaced) < 1e-9)));
+});
+
+// Hand placement on the 1900D 19-seat form: FWD max 950, AFT max 550, load order AFT then FWD.
+const handPlaced = (rows, alloc) => Object.assign(flight('B1900D19', rows), { alloc, manual: true });
+
+test('typing a split takes it from the stop\'s largest section', () => {
+  const f = handPlaced([{ cargo: '100', fast: '50', bag: '40' }], { r0: { all: { AFT: '190' } } });
+  f.alloc.r0.all.FWD = '50';
+  balanceRow(f, 'r0', 'all', 'FWD');
+  assert.deepEqual(f.alloc.r0.all, { AFT: '140', FWD: '50' });
+  f.alloc.r0.all.FWD = '20';
+  balanceRow(f, 'r0', 'all', 'FWD');
+  assert.deepEqual(f.alloc.r0.all, { AFT: '170', FWD: '20' });
+});
+
+test('clearing a typed cell gives its weight back, never to a new section', () => {
+  const f = handPlaced([{ cargo: '190' }], { r0: { all: { AFT: '190' } } });
+  f.alloc.r0.all.AFT = '';
+  balanceRow(f, 'r0', 'all', 'AFT');
+  assert.deepEqual(f.alloc.r0.all, { AFT: '' });
+});
+
+test('a stop added after hand placement is placed without moving the others', () => {
+  const f = handPlaced([{ cargo: '200' }, { cargo: '400' }], { r0: { all: { AFT: '200' } } });
+  syncRow(f, 'r1');
+  assert.deepEqual(f.alloc.r0.all, { AFT: '200' });
+  assert.deepEqual(f.alloc.r1.all, { AFT: '350', FWD: '50' }); // AFT has 350 left
+});
+
+test('a heavier stop grows in its largest section; a lighter one shrinks its smallest first', () => {
+  const f = handPlaced([{ cargo: '250' }], { r0: { all: { AFT: '100', FWD: '50' } } });
+  syncRow(f, 'r0');
+  assert.deepEqual(f.alloc.r0.all, { AFT: '200', FWD: '50' });
+  f.rows[0].cargo = '170';
+  syncRow(f, 'r0');
+  assert.deepEqual(f.alloc.r0.all, { AFT: '170' });
+});
+
+test('syncing never goes past a limit; what does not fit stays in the Difference', () => {
+  const f = handPlaced([{ cargo: '2000' }], {});
+  syncRow(f, 'r0');
+  assert.deepEqual(f.alloc.r0.all, { AFT: '550', FWD: '950' });
+  assert.equal(compute(f).rs[0].parts[0].unplaced, 500);
+});
+
+test('Dash 8 bags and cargo balance separately', () => {
+  const f = Object.assign(flight('DH8300', [{ cargo: '200', bag: '100' }]), {
+    alloc: { r0: { bag: { Z2A: '100' }, cargo: { Z2A: '200' } } }, manual: true });
+  f.alloc.r0.cargo.Z2B = '50';
+  balanceRow(f, 'r0', 'cargo', 'Z2B');
+  assert.deepEqual(f.alloc.r0.cargo, { Z2A: '150', Z2B: '50' });
+  assert.deepEqual(f.alloc.r0.bag, { Z2A: '100' });
 });

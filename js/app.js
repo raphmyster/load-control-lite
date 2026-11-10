@@ -1,9 +1,10 @@
 
-import { OPERATOR, DEMO_LABEL, LIMITS_NOTE, FORMS, FREIGHT_KEYS, FORM_POS, AIRPORTS } from './config.js';
+import { OPERATOR, FORMS, FREIGHT_KEYS, FORM_POS, AIRPORTS } from './config.js';
 import { LOGO } from './brand.js';
+import { applyPack, dress } from './pack.js';
 import { drawForm } from './draw.js';
 import { calc, n } from './calc.js';
-import { sum, formOf, kindsOf, placeable, activeRows, allocOf, compute, autoPlace } from './load.js';
+import { sum, formOf, kindsOf, placeable, activeRows, allocOf, compute, autoPlace, balanceRow, syncRow } from './load.js';
 import * as db from './db.js';
 import { delayMinutes } from './db-map.js';
 
@@ -20,7 +21,7 @@ const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.g
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtDate = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return `${d}-${MONTHS[+m - 1]}-${y.slice(2)}`; };
 const blankIfZero = v => v ? fmt(v) : '';
-const AIRPORT_CODES = new Set(AIRPORTS.map(a => a.code));
+const airportCodes = () => new Set(AIRPORTS.map(a => a.code)); // after the pack adds its airports
 
 function newRow() { return { id: uid(), dest: '', cargo: '', post: '', fast: '', bag: '' }; }
 function newFlight() {
@@ -56,7 +57,7 @@ function warnings(f, c) {
   rs.forEach(x => {
     const d = x.r.dest.trim();
     if (!d) add('warn', 'A manifest row has weights but no destination.');
-    else if (!AIRPORT_CODES.has(d)) add('warn', `${d} isn't in the airport list. Check the destination code.`);
+    else if (!airportCodes().has(d)) add('warn', `${d} isn't in the airport list. Check the destination code.`);
   });
   zones.forEach(z => { if (z.max && planned[z.id] > z.max) add('error', `${z.label}: ${fmt(planned[z.id])} lb planned, max ${fmt(z.max)} lb.`); });
   groups.forEach(g => { if (g.over) add('error', `${g.short}: ${fmt(g.total)} lb planned, max ${fmt(g.max)} lb.`); });
@@ -99,7 +100,7 @@ function parseQuick(text) {
    same SVG. Positions are in the form's own units (FORM_POS in config.js), so the
    overlay scales with the drawing on screen and on paper. */
 
-const pageFoot = (f, title) => `<div class="foot"><span>${esc(title)} · Flight ${esc(f.flightNo)} · ${esc(f.reg)} · ${fmtDate(f.date)}</span><span>${esc(OPERATOR.app)} · ${esc(DEMO_LABEL)}</span></div>`;
+const pageFoot = (f, title) => `<div class="foot"><span>${esc(title)} · Flight ${esc(f.flightNo)} · ${esc(f.reg)} · ${fmtDate(f.date)}</span><span>${esc(OPERATOR.app)} · ${esc(OPERATOR.label)}</span></div>`;
 // DG, human remains and AOG are flagged at the door on the form
 const hazards = f => [f.dgNote === 'crew' && 'DG', f.special.hr && 'HUM', f.special.aog && 'AOG'].filter(Boolean);
 
@@ -113,8 +114,8 @@ const overNote = ([x, y], s, anchor = 'end') => `<text x="${x}" y="${y}" font-si
 // One destination tag. data-* lets the screen drag it; print ignores them.
 function chip(t, zone, x, y, s, bw) {
   return `<g class="chip" data-row="${esc(t.rowId)}" data-zone="${zone}" data-x="${x.toFixed(1)}" data-y="${y.toFixed(1)}" data-w="${(bw * s).toFixed(1)}" data-h="${(40 * s).toFixed(1)}" transform="translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${s.toFixed(2)})">
-    <rect width="${bw.toFixed(1)}" height="40" rx="6" fill="#dcf2ef" stroke="#2a9d8f" stroke-width="1.5"/>
-    <rect width="6" height="40" rx="2" fill="#2a9d8f"/>
+    <rect width="${bw.toFixed(1)}" height="40" rx="6" fill="#fff0c2" stroke="#e8b400" stroke-width="1.5"/>
+    <rect width="6" height="40" rx="2" fill="#ffbb01"/>
     <text x="12" y="16" font-size="16" font-weight="800" font-family="Arial, sans-serif" fill="#000" letter-spacing=".5">${esc(t.dest)}</text>
     <text x="12" y="33" font-size="15" class="v">${fmt(t.w)}<tspan font-size="10" font-family="Arial, sans-serif" font-weight="600" fill="#555"> lb</tspan></text></g>`;
 }
@@ -235,7 +236,7 @@ function drawnBody(f, c) {
     o += badges(f, P.door);
   }
   return `<div class="drawn"><svg viewBox="${bx} ${by} ${bw} ${bh}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${esc(form.name)} load control form">
-    <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#fff"/>${drawForm(form, P)}${o}</svg></div>`;
+    <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#fff"/>${images[f.form] ? `<image href="${images[f.form]}" x="0" y="0" width="${P.w}" height="${P.h}" preserveAspectRatio="none"/>` : drawForm(form, P)}${o}</svg></div>`;
 }
 
 const formBody = (f, c) => drawnBody(f, c);
@@ -339,12 +340,12 @@ function viewLoad(f, c) {
       <span class="pill ${f.manual ? 'muted' : 'ok'}">${f.manual ? 'Placement edited by hand' : 'Placement follows the manifest'}</span></h2>
     <div class="alerts">${alerts}</div>
     <h3>Where each stop's load goes</h3>
-    <p class="hint">The table fills in from the manifest${form.shared ? ', every stop in J first' : ", last stop's load deepest first so each stop's load is nearest the door when it's due off"}.${form.split ? ' Bags are the Baggage column; Cargo is Cargo + Post + Fast-Tracks.' : ''} Typing in a cell or dragging a tag switches to hand placement, and from then on manifest changes don't move anything.</p>
+    <p class="hint">The table fills in from the manifest${form.shared ? ', every stop in J first' : ", last stop's load deepest first so each stop's load is nearest the door when it's due off"}.${form.split ? ' Bags are the Baggage column; Cargo is Cargo + Post + Fast-Tracks.' : ''} Typing in a cell or dragging a tag switches to hand placement. A number typed in a cell comes out of that stop's largest section, and a manifest change updates only the stop that changed.</p>
     <div class="scroll" data-scroll="alloc"><table class="t"><thead><tr><th class="l">Destination</th><th>Weight</th>
       ${zones.map(z => `<th>${esc(z.label)}<br><span class="sub">${z.max ? 'max ' + fmt(z.max) : 'no zone max'}</span></th>`).join('')}<th>Difference</th></tr></thead>
       <tbody>${rowsHtml || `<tr><td class="l" colspan="${zones.length + 3}">Add a destination to the manifest.</td></tr>`}</tbody>
       <tfoot><tr><td class="l">Zone total</td><td>${fmt(c.manifestTotal)}</td>${zones.map(z => `<td class="${z.max && planned[z.id] > z.max ? 'bad' : ''}">${fmt(planned[z.id])}</td>`).join('')}<td></td></tr></tfoot></table></div>
-    <p class="hint">${esc(LIMITS_NOTE)}.</p>
+    ${OPERATOR.limitsNote ? `<p class="hint">${esc(OPERATOR.limitsNote)}.</p>` : ''}
     <div class="toolbar"><button class="btn" data-act="clearAlloc">Clear placement</button></div>
     <h3>Form</h3>
     <p class="hint">Drag a destination tag anywhere inside a section of the aircraft. It stays where you drop it, and dropping it in another section moves that stop's load there. A tag let go outside the aircraft goes back. Tidy tags lines them up again.</p>
@@ -358,12 +359,14 @@ function viewPrint() {
     <div class="checks">${radio('pp:layout', 'one', printPages.layout, 'One page: flight details, manifest and form')}${radio('pp:layout', 'separate', printPages.layout, 'Separate pages')}</div>
     ${printPages.layout === 'separate' ? `<div class="checks">${chk('pp:manifest', printPages.manifest, 'Manifest page')}${chk('pp:form', printPages.form, 'Load control form page')}</div>` : ''}
     <div class="toolbar"><button class="btn primary" data-act="print">Print</button><button class="btn" data-act="pdf">Save as PDF</button></div>
-    <p class="hint">Both buttons use these choices. PC-12 and 1900D print landscape, Dash 8-300 portrait. A long manifest is shrunk so everything stays on one sheet.</p></section>`;
+    <p class="hint">Both buttons use these choices. PC-12 and 1900D print landscape, Dash 8 portrait. A long manifest is shrunk so everything stays on one sheet.</p></section>`;
 }
 
 /* ------------------------------ state ------------------------------ */
 // Flights live in Supabase; localStorage keeps only per-viewer choices.
 let flights = [];
+// form images from the operator pack, by form id; packed: the pack has been applied
+let images = {}, packed = false;
 let currentId = null;
 let printPages = { layout: 'one', manifest: true, form: true, ...store.get('lcl.pages', {}) };
 let theme = store.get('lcl.theme', 'auto');
@@ -384,11 +387,20 @@ async function boot() {
   document.getElementById('signin').hidden = !!user;
   if (!user) { setStatus(''); render(); return; }
   try {
+    if (!packed) {
+      const applied = applyPack(await db.loadPack());
+      images = applied?.images || {};
+      dress(applied);
+      document.getElementById('brand').insertAdjacentHTML('afterbegin', LOGO('logo'));
+      // one pick list shared by every destination cell
+      document.body.insertAdjacentHTML('beforeend', `<datalist id="airports">${AIRPORTS.map(a => `<option value="${a.code}">${esc(a.city)}</option>`).join('')}</datalist>`);
+      packed = true;
+    }
     flights = await db.loadFlights();
   } catch (err) {
     // Don't create or save anything: an empty list here would look like lost data.
     console.error(err);
-    document.getElementById('view').innerHTML = `<section class="card"><h2>Couldn't load flights</h2>
+    document.getElementById('view').innerHTML = `<section class="card"><h2>Couldn't load</h2>
       <p>${esc(err.message || String(err))}</p><button class="btn primary" data-act="reload">Try again</button></section>`;
     return;
   }
@@ -546,8 +558,9 @@ function endDrag(e, cancel) {
 document.addEventListener('pointerup', e => endDrag(e, false));
 document.addEventListener('pointercancel', e => endDrag(e, true));
 
-// manifest edits re-run auto-place unless the placement was edited by hand
-const manifestChanged = f => { if (!f.manual) autoPlace(f); };
+// manifest edits re-run auto-place until the placement is edited by hand; after that
+// each stop is brought back in line with its manifest weight without moving the others
+const manifestChanged = f => { if (!f.manual) autoPlace(f); else f.rows.forEach(r => syncRow(f, r.id)); };
 
 function setBound(el) {
   if (isClosed(cur()) && !el.dataset.bind.startsWith('pp:')) return;
@@ -562,7 +575,7 @@ function setBound(el) {
       break;
     case 'special': f.special[a] = val; break;
     case 'row': { const r = f.rows.find(x => x.id === a); if (r) { r[b] = b === 'dest' ? String(val).toUpperCase() : val; manifestChanged(f); } break; }
-    case 'alloc': ((f.alloc[a] ||= {})[b] ||= {})[d] = val; f.manual = true; break;
+    case 'alloc': ((f.alloc[a] ||= {})[b] ||= {})[d] = val; balanceRow(f, a, b, d); f.manual = true; break;
     case 'pp': printPages[a] = val; break;
   }
   save(); render();
@@ -616,7 +629,7 @@ const actions = {
   signOut() {
     db.flush().then(ok => {
       if (!ok && !confirm('Some changes could not be saved. Sign out anyway and lose them?')) return;
-      return db.signOut().then(() => { flights = []; currentId = null; boot(); });
+      return db.signOut().then(() => location.reload()); // drops the pack from memory
     });
     return false;
   },
@@ -698,7 +711,4 @@ document.addEventListener('click', e => {
 });
 
 
-document.getElementById('brand').insertAdjacentHTML('afterbegin', LOGO('logo'));
-// one pick list shared by every destination cell
-document.body.insertAdjacentHTML('beforeend', `<datalist id="airports">${AIRPORTS.map(a => `<option value="${a.code}">${esc(a.city)}</option>`).join('')}</datalist>`);
 boot();

@@ -14,8 +14,12 @@ function markInner() {
 }
 const VIEWBOX = '0 0 290 80';
 
+// An operator pack's own mark (an <svg> string) replaces the drawn one.
+let mark = null;
+export const setMark = svg => { mark = svg; };
+
 // HTML element, sized by CSS through `cls`
-export const LOGO = cls => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${VIEWBOX}" role="img" aria-label="${esc(OPERATOR.name)}" class="${cls}">${markInner()}</svg>`;
+export const LOGO = cls => mark ? mark.replace('<svg', `<svg class="${cls}"`) : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${VIEWBOX}" role="img" aria-label="${esc(OPERATOR.name)}" class="${cls}">${markInner()}</svg>`;
 
 // nested inside a form's SVG, fitted to the box x, y, w, h
 export const markSvg = (x, y, w, h, color) =>

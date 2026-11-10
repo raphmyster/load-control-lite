@@ -1,8 +1,9 @@
 /* Reports page: pick a week, generate the report in either mode through the edge function,
    read it back from the reports table, and list earlier runs. The page never writes to
    the database itself; reports and ai_calls are read-only for signed-in users. */
-import { sb, currentUser } from './db.js';
+import { sb, currentUser, loadPack } from './db.js';
 import { LOGO } from './brand.js';
+import { applyPack, dress } from './pack.js';
 import { renderMarkdown, esc } from './md.js';
 
 const $ = id => document.getElementById(id);
@@ -155,10 +156,13 @@ async function generate(e) {
 }
 
 async function boot() {
-  $('brand').insertAdjacentHTML('afterbegin', LOGO('logo'));
   const user = await currentUser();
   $('signedOut').hidden = !!user;
   if (!user) return;
+  const applied = applyPack(await loadPack());
+  if (applied && !applied.features.reports) { location.replace('index.html'); return; }
+  dress(applied);
+  $('brand').insertAdjacentHTML('afterbegin', LOGO('logo'));
   $('generator').hidden = false;
   showHint();
   try { await Promise.all([loadWeeks(), loadHistory(), loadAlerts()]); }
@@ -171,4 +175,4 @@ $('historyBody').addEventListener('click', e => {
   const id = e.target.closest('[data-open]')?.dataset.open;
   if (id) showReport(id).catch(err => { console.error(err); $('genStatus').textContent = err.message; });
 });
-boot();
+boot().catch(err => { console.error(err); $('genStatus').className = 'report-status error'; $('genStatus').textContent = `Couldn't load: ${err.message}`; });

@@ -1,4 +1,4 @@
-import { FORM_VERSION, DEMO_LABEL, LIMITS_NOTE } from './config.js';
+import { OPERATOR } from './config.js';
 import { markSvg } from './brand.js';
 
 /* ------------------------------ blank forms ------------------------------
@@ -32,7 +32,7 @@ function header(form, P) {
   o += T(mid(H.title), y0 + (y1 - y0) * 0.33, esc(form.type), { size: Math.min(30, tw / (0.62 * form.type.length)), anchor: 'middle', weight: 800 });
   o += T(mid(H.title), y0 + (y1 - y0) * 0.74, 'LOAD CONTROL', { size: Math.min(14, tw / 8), anchor: 'middle', weight: 600 });
   o += T(H.date[0] + 6, y0 + 11, 'DATE', lab) + T(H.date[0] + 6, ym + 11, 'FORM', lab);
-  o += T(mid(H.date), ym + (y1 - ym) * 0.62, FORM_VERSION, { size: 12, anchor: 'middle' });
+  o += T(mid(H.date), ym + (y1 - ym) * 0.62, esc(form.version || OPERATOR.formVersion), { size: 12, anchor: 'middle' });
   o += T(H.reg[0] + 6, y0 + 11, narrow ? 'REG' : 'A/C REGISTRATION', lab) + T(H.reg[0] + 6, ym + 11, narrow ? 'FLIGHT' : 'FLIGHT NUMBER', lab);
   // ring labels sit left of the ring on strip forms, right of it on the Dash 8
   const D = P.dots, right = P.dotLabels === 'right';
@@ -125,7 +125,7 @@ function stripForm(form, P) {
   o += T((bx0 + cx) / 2, by0 + 44, 'LOADMASTER', { size: 15, anchor: 'middle', weight: 800 });
   o += T((cx + sx) / 2, by0 + 79, 'PRINT NAME', { size: 10, anchor: 'middle', weight: 700 }) + T((sx + bx1) / 2, by0 + 79, 'SIGNATURE', { size: 10, anchor: 'middle', weight: 700 });
   o += T((bx0 + bx1) / 2, (by0 + 88 + by1) / 2, 'I confirm the aircraft is loaded as shown on this form.', { size: 13, anchor: 'middle', weight: 600 });
-  [...lines(LIMITS_NOTE + '.', 26).map(s => [s, 400, '#4b555d']), ...lines(DEMO_LABEL + '.', 26).map(s => [s, 700, RED])]
+  [...lines(OPERATOR.limitsNote + '.', 26).map(s => [s, 400, '#4b555d']), ...lines(OPERATOR.label + '.', 26).map(s => [s, 700, RED])]
     .forEach(([s, weight, fill], i) => { o += T(bx1 + 14, by0 + 22 + i * 17, esc(s), { size: 12, weight, fill }); });
   return o;
 }
@@ -179,7 +179,7 @@ function dash8Form(form, P) {
     o += `<rect x="${x0 + 1.5}" y="1094" width="${x1 - x0 - 3}" height="24" fill="#eef0f2"/>`;
     [['BAGS', q.bag], ['CARGO', q.cargo], ['TOTAL IN THIS BIN', q.total]].forEach(([s, [x, y]]) => { o += T(x0 + 10, y, s, { size: 13, weight: 800 }) + L(x - 70, y + 13, x + 4, y + 13, 1.2, GREY); });
   });
-  o += T(fx1 - 10, 1185, `${esc(LIMITS_NOTE)} · ${esc(DEMO_LABEL)}`, { size: 12, anchor: 'end', weight: 700, fill: RED });
+  o += T(fx1 - 10, 1185, `${esc(OPERATOR.limitsNote)} · ${esc(OPERATOR.label)}`, { size: 12, anchor: 'end', weight: 700, fill: RED });
   return o;
 }
 

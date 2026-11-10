@@ -1,17 +1,19 @@
-/* Northbound Air (fictional): petrol slate #16323f, teal #2a9d8f, Inter */
+/* Navy #172563 with a red #cc332b and yellow #ffbb01 stripe, Inter. Shared by the
+   sign-in screen and the app; an operator pack can still override any of them. */
 :root {
-  --brand: #16323f;
-  --brand-2: #2a9d8f;
-  --print-ink: #12355b;
-  --bg: #f3f5f7;
+  --brand: #172563;
+  --brand-2: #cc332b;
+  --brand-3: #ffbb01;
+  --print-ink: #172563;
+  --bg: #f3f5f9;
   --surface: #ffffff;
-  --surface-2: #f6f8f9;
-  --ink: #1c2529;
-  --heading: #16323f;
-  --muted: #56636b;
-  --line: #d9e0e4;
-  --accent: #16323f;
-  --accent-hover: #22495b;
+  --surface-2: #f6f7fb;
+  --ink: #1b2236;
+  --heading: #172563;
+  --muted: #535d75;
+  --line: #dadfea;
+  --accent: #172563;
+  --accent-hover: #22337f;
   --accent-ink: #ffffff;
   --ok: #1a7445;
   --ok-bg: #e2f3e9;
@@ -19,22 +21,22 @@
   --warn-bg: #fff3d1;
   --err: #b4231b;
   --err-bg: #fde8e6;
-  --zone: #edf2f4;
+  --zone: #eef1f8;
   --radius: 10px;
-  --shadow: 0 1px 2px rgba(22, 50, 63, .06), 0 2px 8px rgba(22, 50, 63, .04);
+  --shadow: 0 1px 2px rgba(23, 37, 99, .06), 0 2px 8px rgba(23, 37, 99, .04);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0c1418; --surface: #121e24; --surface-2: #18272e; --ink: #e6edf0; --heading: #ffffff; --muted: #9fb0b8;
-    --line: #263a43; --accent: #5cc8b9; --accent-hover: #7fd6ca; --accent-ink: #0c1418; --ok: #5fd08f; --ok-bg: #11301f;
-    --warn: #ffbf4d; --warn-bg: #33270f; --err: #ff8076; --err-bg: #3c1715; --zone: #16242b; --shadow: none; color-scheme: dark;
+    --bg: #0b1129; --surface: #121a3a; --surface-2: #18224a; --ink: #e7eaf3; --heading: #ffffff; --muted: #a3acc4;
+    --line: #2a3561; --accent: #ffbb01; --accent-hover: #ffc933; --accent-ink: #172563; --ok: #5fd08f; --ok-bg: #11301f;
+    --warn: #ffbf4d; --warn-bg: #33270f; --err: #ff8076; --err-bg: #3c1715; --zone: #172150; --shadow: none; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0c1418; --surface: #121e24; --surface-2: #18272e; --ink: #e6edf0; --heading: #ffffff; --muted: #9fb0b8;
-  --line: #263a43; --accent: #5cc8b9; --accent-hover: #7fd6ca; --accent-ink: #0c1418; --ok: #5fd08f; --ok-bg: #11301f;
-  --warn: #ffbf4d; --warn-bg: #33270f; --err: #ff8076; --err-bg: #3c1715; --zone: #16242b; --shadow: none; color-scheme: dark;
+  --bg: #0b1129; --surface: #121a3a; --surface-2: #18224a; --ink: #e7eaf3; --heading: #ffffff; --muted: #a3acc4;
+  --line: #2a3561; --accent: #ffbb01; --accent-hover: #ffc933; --accent-ink: #172563; --ok: #5fd08f; --ok-bg: #11301f;
+  --warn: #ffbf4d; --warn-bg: #33270f; --err: #ff8076; --err-bg: #3c1715; --zone: #172150; --shadow: none; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -48,8 +50,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: sticky; top: 0; z-index: 10; background: var(--brand); color: #fff;
   display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 20px;
 }
-/* teal rule under the top bar */
-.topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 4px; background: var(--brand-2); }
+/* red and yellow stripe under the top bar */
+.topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 4px; background: linear-gradient(90deg, var(--brand-2) 0 40%, var(--brand-3) 40% 100%); }
 .brand { display: flex; align-items: center; gap: 12px; white-space: nowrap; color: #fff; }
 .brand .logo { width: 132px; height: auto; display: block; }
 .brand .divider { width: 1px; height: 28px; background: rgba(255, 255, 255, .28); }
@@ -177,7 +179,7 @@ table.t td.has-calc::after { content: ""; position: absolute; top: 5px; right: 7
 .sheet .chip.dragging { opacity: .35; }
 .sheet .ghost { pointer-events: none; opacity: .9; cursor: grabbing; }
 .sheet .drop, .sheet .area { pointer-events: none; }
-.sheet .area.over { fill: rgba(42, 157, 143, .2); stroke: #2a9d8f; stroke-width: 3; stroke-dasharray: 10 6; }
+.sheet .area.over { fill: rgba(255, 187, 1, .22); stroke: #e8b400; stroke-width: 3; stroke-dasharray: 10 6; }
 
 
 /* ---------- printable forms (always black on white) ---------- */

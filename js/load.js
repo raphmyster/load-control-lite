@@ -67,3 +67,54 @@ export function autoPlace(f) {
   });
   f.manual = false;
 }
+
+/* ------------------------- hand placement sync -------------------------
+   Once placement is edited by hand, auto-place no longer re-runs. These keep each
+   stop's placed weight equal to its manifest weight instead, one stop and one kind
+   at a time, without moving any other stop. */
+const r1 = v => Math.round(v * 10) / 10;
+function setCell(f, rowId, kindId, zoneId, v) {
+  const a = ((f.alloc[rowId] ||= {})[kindId] ||= {});
+  if (v > 0.05) a[zoneId] = String(r1(v)); else delete a[zoneId];
+}
+// Room left in a zone after everything planned: its own max and every group it's in.
+function roomOf(c, z) {
+  const own = z.max == null ? Infinity : z.max - c.planned[z.id];
+  const groups = c.form.groups.filter(g => g.zones.includes(z.id)).map(g => g.max - sum(g.zones.map(id => c.planned[id])));
+  return Math.max(0, Math.min(own, ...groups));
+}
+
+/* keep: the zone the user just typed in. It stays as typed, the weight comes from (or
+   goes back to) the stop's other zones, largest first, and never moves to a new zone.
+   Without keep (the manifest changed): extra weight goes to the largest zone the stop
+   already uses, then to zones in load order with room; less weight comes off the
+   smallest zones first. Automatic changes never go past a limit. */
+export function balanceRow(f, rowId, kindId, keep) {
+  const x = compute(f).rs.find(x => x.r.id === rowId);
+  const p = x?.parts.find(p => p.kind.id === kindId);
+  if (!p) return;
+  let diff = p.amount - p.placed; // > 0: more to place, < 0: too much placed
+  if (Math.abs(diff) < 0.05) return;
+  const form = formOf(f), zones = placeable(form);
+  const held = () => allocOf(f, rowId, kindId);
+  const holders = zones.filter(z => z.id !== keep && n(held()[z.id]) > 0);
+  if (diff < 0) {
+    holders.sort((a, b) => keep ? n(held()[b.id]) - n(held()[a.id]) : n(held()[a.id]) - n(held()[b.id]));
+    for (const z of holders) {
+      if (diff > -0.05) break;
+      const v = n(held()[z.id]), cut = Math.min(v, -diff);
+      setCell(f, rowId, kindId, z.id, v - cut); diff += cut;
+    }
+    return;
+  }
+  holders.sort((a, b) => n(held()[b.id]) - n(held()[a.id]));
+  const order = form.loadOrder.map(id => zones.find(z => z.id === id)).filter(z => z && !holders.includes(z));
+  for (const z of keep ? holders : [...holders, ...order]) {
+    if (diff < 0.05) break;
+    const put = Math.min(diff, roomOf(compute(f), z));
+    if (put > 0) { setCell(f, rowId, kindId, z.id, n(held()[z.id]) + put); diff -= put; }
+  }
+}
+
+// After a manifest change: bring every part of one stop back in line with the manifest.
+export const syncRow = (f, rowId) => kindsOf(formOf(f)).forEach(k => balanceRow(f, rowId, k.id));

@@ -4,10 +4,11 @@
    and every limit is illustrative: none comes from a real aircraft or
    a real airline's paperwork.
    ===================================================================== */
-export const OPERATOR = { name: 'Northbound Air', app: 'Load Control Lite' };
-export const FORM_VERSION = 'Demo form v1';
-export const DEMO_LABEL = 'Demo, not for operational use';
-export const LIMITS_NOTE = 'Illustrative limits, not from any real aircraft';
+// app: the top bar title after sign-in. label: the demo notice. limitsNote: shown when set.
+export const OPERATOR = {
+  name: 'Northbound Air', app: 'Load Control Lite', label: 'Demo, not for operational use',
+  limitsNote: 'Illustrative limits, not from any real aircraft', formVersion: 'Demo form v1',
+};
 
 /* Zones run left to right as drawn on the form. `w` is the column's relative
    width on the printed strip. Limits in lb. `loadOrder` lists placeable zones

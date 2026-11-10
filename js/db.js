@@ -14,6 +14,15 @@ export async function signIn(email, password) {
 }
 export async function signOut() { await sb.auth.signOut(); }
 
+// The operator pack, or null when none is stored. Any other failed read throws, so the
+// app never falls back to the default forms by accident. A missing table (migration not
+// applied yet) counts as no pack.
+export async function loadPack() {
+  const { data, error } = await sb.from('operator_profile').select('profile').maybeSingle();
+  if (error && !['PGRST205', '42P01'].includes(error.code)) throw error;
+  return data?.profile ?? null;
+}
+
 // Explicit foreign keys: zone_allocations also links to flight_stops, so PostgREST
 // could otherwise read it as a join table between flights and flight_stops.
 const SELECT = '*, flight_stops!flight_stops_flight_id_fkey(*), zone_allocations!zone_allocations_flight_id_fkey(*)';
